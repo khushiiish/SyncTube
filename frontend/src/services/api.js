@@ -4,8 +4,13 @@ import axios from 'axios'
  * api.js — Axios instance for backend REST calls.
  * Base URL reads from env or defaults to proxied /api.
  */
+let baseUrl = import.meta.env.VITE_API_URL || '/api'
+if (baseUrl !== '/api' && !baseUrl.endsWith('/api') && !baseUrl.endsWith('/api/')) {
+  baseUrl = `${baseUrl.replace(/\/$/, '')}/api`
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: baseUrl,
   headers: { 'Content-Type': 'application/json' },
   timeout: 10000,
 })

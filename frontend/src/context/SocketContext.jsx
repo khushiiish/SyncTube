@@ -10,7 +10,13 @@ import { io } from 'socket.io-client'
  */
 const SocketContext = createContext(null)
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'
+let socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'
+if (socketUrl.endsWith('/api')) {
+  socketUrl = socketUrl.slice(0, -4)
+} else if (socketUrl.endsWith('/api/')) {
+  socketUrl = socketUrl.slice(0, -5)
+}
+const SOCKET_URL = socketUrl
 
 export function SocketProvider({ children }) {
   const socketRef = useRef(null)
