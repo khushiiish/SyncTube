@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SyncTube - Precision Entertainment</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary": "#d0bcff",
+                    "secondary-container": "#571bc1",
+                    "surface-container-low": "#1c1b1d",
+                    "on-primary-fixed": "#410004",
+                    "surface-container": "#201f22",
+                    "surface-container-highest": "#353437",
+                    "on-secondary-container": "#c4abff",
+                    "on-tertiary-container": "#00285d",
+                    "on-background": "#e5e1e4",
+                    "surface-variant": "#353437",
+                    "on-primary-container": "#5c0008",
+                    "inverse-on-surface": "#313032",
+                    "tertiary-fixed": "#d8e2ff",
+                    "on-surface": "#e5e1e4",
+                    "on-tertiary": "#002e6a",
+                    "surface-container-lowest": "#0e0e10",
+                    "surface-container-high": "#2a2a2c",
+                    "on-primary-fixed-variant": "#930013",
+                    "surface-tint": "#ffb3ad",
+                    "secondary-fixed": "#e9ddff",
+                    "on-surface-variant": "#e4beba",
+                    "surface": "#131315",
+                    "error": "#ffb4ab",
+                    "error-container": "#93000a",
+                    "on-error": "#690005",
+                    "outline-variant": "#5b403e",
+                    "tertiary": "#adc6ff",
+                    "on-secondary-fixed-variant": "#5516be",
+                    "tertiary-container": "#4d8eff",
+                    "surface-bright": "#39393b",
+                    "primary-fixed-dim": "#ffb3ad",
+                    "on-tertiary-fixed-variant": "#004395",
+                    "tertiary-fixed-dim": "#adc6ff",
+                    "on-error-container": "#ffdad6",
+                    "on-secondary-fixed": "#23005c",
+                    "primary-container": "#ff5451",
+                    "on-primary": "#68000a",
+                    "primary-fixed": "#ffdad7",
+                    "background": "#131315",
+                    "on-secondary": "#3c0091",
+                    "inverse-primary": "#b91a24",
+                    "secondary-fixed-dim": "#d0bcff",
+                    "inverse-surface": "#e5e1e4",
+                    "on-tertiary-fixed": "#001a42",
+                    "primary": "#ffb3ad",
+                    "surface-dim": "#131315",
+                    "outline": "#ab8986"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-max": "1440px",
+                    "lg": "24px",
+                    "xl": "40px",
+                    "sm": "8px",
+                    "gutter": "20px",
+                    "base": "4px",
+                    "xs": "4px",
+                    "md": "16px",
+                    "2xl": "64px"
+            },
+            "fontFamily": {
+                    "label-md": [
+                            "Geist", "sans-serif"
+                    ],
+                    "headline-md": [
+                            "Geist", "sans-serif"
+                    ],
+                    "display-hero": [
+                            "Geist", "sans-serif"
+                    ],
+                    "body-sm": [
+                            "Inter", "sans-serif"
+                    ],
+                    "body-lg": [
+                            "Inter", "sans-serif"
+                    ],
+                    "body-md": [
+                            "Inter", "sans-serif"
+                    ],
+                    "headline-lg": [
+                            "Geist", "sans-serif"
+                    ],
+                    "display-hero-mobile": [
+                            "Geist", "sans-serif"
+                    ],
+                    "label-xs": [
+                            "Geist", "sans-serif"
+                    ]
+            },
+            "fontSize": {
+                    "label-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.02em",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "display-hero": [
+                            "64px",
+                            {
+                                    "lineHeight": "1.1",
+                                    "letterSpacing": "-0.04em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-sm": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "body-lg": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-lg": [
+                            "30px",
+                            {
+                                    "lineHeight": "36px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "display-hero-mobile": [
+                            "40px",
+                            {
+                                    "lineHeight": "1.2",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "label-xs": [
+                            "12px",
+                            {
+                                    "lineHeight": "14px",
+                                    "fontWeight": "500"
+                            }
+                    ]
+            }
+    },
+        },
+      }
+    </script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        @keyframes mesh-gradient {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+        .hero-mesh {
+            background: radial-gradient(circle at top left, rgba(239, 68, 68, 0.15) 0%, transparent 40%),
+                        radial-gradient(circle at bottom right, rgba(139, 92, 246, 0.15) 0%, transparent 40%),
+                        radial-gradient(circle at center, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+            animation: mesh-gradient 15s ease infinite;
+            background-size: 200% 200%;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar (Shared Component) -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-lg py-md bg-surface/60 backdrop-blur-md border-b border-outline-variant/20 shadow-sm docked full-width top-0">
+<div class="flex items-center gap-md">
+<span class="font-headline-md text-headline-md font-bold text-primary">SyncTube</span>
+</div>
+<div class="hidden md:flex items-center gap-xl">
+<a class="font-label-md text-label-md text-primary font-bold border-b-2 border-primary pb-1 hover:text-primary transition-colors duration-200" href="#">Discover</a>
+<a class="font-label-md text-label-md text-on-surface-variant font-medium hover:text-primary transition-colors duration-200" href="#">Rooms</a>
+<a class="font-label-md text-label-md text-on-surface-variant font-medium hover:text-primary transition-colors duration-200" href="#">Trends</a>
+</div>
+<div class="flex items-center gap-md">
+<button class="scale-95 duration-150 text-on-surface-variant hover:text-primary transition-colors duration-200 p-sm rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="scale-95 duration-150 text-on-surface-variant hover:text-primary transition-colors duration-200 p-sm rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</button>
+<button class="scale-95 duration-150 text-on-surface-variant hover:text-primary transition-colors duration-200 p-sm rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<img alt="User Avatar" class="w-8 h-8 rounded-full ml-sm object-cover border border-outline-variant/50" data-alt="A small circular user avatar showing a modern, abstract geometric pattern in vibrant neon colors against a dark background, representing a generic but premium user profile picture in a sleek digital interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAy0fK3-t4EaY2slffcW7OLSfmfTLb1tYkCIIMbUetmfoeJQERizpQi21KpfS-EPB8OI_MOE0OCsm0jQZIX0ThYXPkp7PMeukHaO9kZIGgwGlFOjuXO6Fi55SQ33yrP1KXL6XmIn1cEHiR2QGNbkqW8R1AY3ABWTWpZoK6ovgg0cA5wqe9TbFKOORwpqYYheTmCpzd6DsS2AQ4QD5HK9NjlOK29OrpajRlW2IS3t-95hWRxA9nSBA"/>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-grow pt-[80px]">
+<!-- Hero Section -->
+<section class="relative min-h-[819px] flex flex-col items-center justify-center px-md overflow-hidden hero-mesh">
+<div class="absolute inset-0 z-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] opacity-20"></div>
+<div class="z-10 text-center max-w-4xl mx-auto flex flex-col items-center gap-xl">
+<div class="inline-flex items-center gap-2 px-md py-xs rounded-full bg-surface-container/80 backdrop-blur-md border border-outline-variant/30 font-label-xs text-label-xs text-on-surface-variant">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                    Now with zero-latency sync
+                </div>
+<h1 class="font-display-hero-mobile md:font-display-hero text-on-surface tracking-tight leading-tight">
+                    Watch Together, <br class="hidden md:block"/> <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Anywhere.</span>
+</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
+                    Experience cinematic synchronization. Invite friends, paste a link, and control the room with developer-grade precision and minimal UI friction.
+                </p>
+<div class="flex flex-col sm:flex-row gap-md w-full sm:w-auto items-center mt-md">
+<button class="w-full sm:w-auto px-xl py-md rounded-lg bg-primary-container text-on-primary-container font-label-md text-label-md font-bold hover:bg-primary transition-all duration-200 border border-transparent shadow-[0_0_15px_rgba(255,84,81,0.2)] hover:shadow-[0_0_20px_rgba(255,84,81,0.4)]">
+                        Create Watch Party
+                    </button>
+<div class="w-full sm:w-auto flex items-center relative group">
+<div class="absolute inset-y-0 left-0 pl-md flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-on-surface-variant/50 group-focus-within:text-secondary transition-colors" data-icon="key">key</span>
+</div>
+<input class="w-full sm:w-auto pl-xl pr-md py-md bg-surface border border-outline-variant/30 rounded-l-lg font-body-md text-body-md text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-secondary focus:ring-1 focus:ring-secondary transition-all" placeholder="Enter Room Code" type="text"/>
+<button class="px-lg py-md rounded-r-lg bg-surface-container border border-l-0 border-outline-variant/30 font-label-md text-label-md text-on-surface hover:bg-surface-variant transition-colors whitespace-nowrap">
+                            Join Room
+                        </button>
+</div>
+</div>
+</div>
+<!-- Abstract decorative elements -->
+<div class="absolute bottom-10 left-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl"></div>
+<div class="absolute top-20 right-20 w-48 h-48 bg-secondary-container/10 rounded-full blur-3xl"></div>
+</section>
+<!-- Features Bento Grid -->
+<section class="max-w-container-max mx-auto px-md md:px-lg py-2xl">
+<div class="text-center mb-xl">
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-sm">Engineered for Performance</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">The technical rigor of dev tools meets immersive streaming.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-md">
+<!-- Feature 1: Real-time Sync (Large) -->
+<div class="md:col-span-2 relative group overflow-hidden rounded-xl bg-surface-container/60 backdrop-blur-xl border border-outline-variant/20 p-lg min-h-[300px] flex flex-col justify-end transition-all hover:border-outline-variant/50 hover:-translate-y-1">
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-highest/90 to-transparent z-10"></div>
+<img alt="Real-time sync visualization" class="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-40 transition-opacity z-0 grayscale" data-alt="A sleek, futuristic dashboard interface displaying glowing data synchronization graphs and waveforms on a dark background, representing real-time technical performance and precision. The aesthetic is minimal, glassmorphic, and bathed in subtle purple and blue neon light." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCycdoRC6POLMmZe-YGLqs8WNrOOaRR3YxXuN02AdC7KB-PLmIFYI6cwB9c0R8fkuy2H30ZZlgVdlhAJrVrb1KWiAPkEJ2YBXvdpbSAetSbhJNG6oBqoRK7DZx2nEamQXHfuM5_9i4j5OGQJmxVqqowkzFFsF9K4Gb66MvueJRBBZkcstj9BhI0zOLgaqyJH1nrnOVjK4eLjQ1T00AHNqMNv_uBxshxAMRIYHYQnUZ5i0ir2Ije2nE"/>
+<div class="relative z-20">
+<span class="material-symbols-outlined text-primary mb-sm text-3xl" data-icon="sync" data-weight="fill">sync</span>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-xs">Real-time Sync</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant max-w-md">Sub-millisecond frame synchronization across all connected clients. When you pause, everyone pauses. Instantaneously.</p>
+</div>
+</div>
+<!-- Feature 2: WebSocket Powered -->
+<div class="relative group rounded-xl bg-surface-container/60 backdrop-blur-xl border border-outline-variant/20 p-lg flex flex-col justify-between transition-all hover:border-outline-variant/50 hover:-translate-y-1">
+<div class="p-sm bg-secondary-container/20 w-max rounded-lg border border-secondary/10 mb-md">
+<span class="material-symbols-outlined text-secondary" data-icon="bolt">bolt</span>
+</div>
+<div>
+<h3 class="font-label-md text-label-md font-bold text-on-surface mb-xs">WebSocket Powered</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Persistent bi-directional connections ensure zero polling overhead and maximum efficiency.</p>
+</div>
+</div>
+<!-- Feature 3: Role-Based Control -->
+<div class="relative group rounded-xl bg-surface-container/60 backdrop-blur-xl border border-outline-variant/20 p-lg flex flex-col justify-between transition-all hover:border-outline-variant/50 hover:-translate-y-1">
+<div class="p-sm bg-primary/10 w-max rounded-lg border border-primary/10 mb-md">
+<span class="material-symbols-outlined text-primary" data-icon="admin_panel_settings">admin_panel_settings</span>
+</div>
+<div>
+<h3 class="font-label-md text-label-md font-bold text-on-surface mb-xs">Role-Based Control</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Assign hosts, moderators, and viewers. Maintain precise control over playback and chat queues.</p>
+</div>
+</div>
+<!-- Feature 4: Secure Rooms -->
+<div class="relative group rounded-xl bg-surface-container/60 backdrop-blur-xl border border-outline-variant/20 p-lg flex flex-col justify-between transition-all hover:border-outline-variant/50 hover:-translate-y-1">
+<div class="p-sm bg-tertiary-container/20 w-max rounded-lg border border-tertiary/10 mb-md">
+<span class="material-symbols-outlined text-tertiary" data-icon="lock">lock</span>
+</div>
+<div>
+<h3 class="font-label-md text-label-md font-bold text-on-surface mb-xs">Secure Rooms</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">End-to-end encrypted signaling and transient room IDs ensure your watch party stays private.</p>
+</div>
+</div>
+<!-- Feature 5: Zero Delay -->
+<div class="relative group rounded-xl bg-surface-container/60 backdrop-blur-xl border border-outline-variant/20 p-lg flex flex-col justify-between transition-all hover:border-outline-variant/50 hover:-translate-y-1">
+<div class="p-sm bg-surface-variant w-max rounded-lg border border-outline-variant/30 mb-md">
+<span class="material-symbols-outlined text-on-surface" data-icon="speed">speed</span>
+</div>
+<div>
+<h3 class="font-label-md text-label-md font-bold text-on-surface mb-xs">Zero Delay Chat</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Integrated ultra-low latency chat alongside the video player, optimized for fast-paced reactions.</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer (Shared Component) -->
+<footer class="w-full py-xl px-lg flex flex-col md:flex-row justify-between items-center bg-surface-container-lowest border-t border-outline-variant/10 full-width">
+<div class="flex flex-col md:flex-row items-center gap-md mb-lg md:mb-0">
+<span class="font-label-md text-label-md font-bold text-on-surface">SyncTube</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant hidden md:inline">|</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant text-center md:text-left">© 2024 SyncTube. Precision Entertainment.</span>
+</div>
+<div class="flex flex-wrap justify-center gap-md md:gap-lg">
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors opacity-80 hover:opacity-100" href="#">Terms</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors opacity-80 hover:opacity-100" href="#">Privacy</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors opacity-80 hover:opacity-100" href="#">Tech Stack</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors opacity-80 hover:opacity-100" href="#">Twitter</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors opacity-80 hover:opacity-100" href="#">GitHub</a>
+</div>
+</footer>
+</body></html>

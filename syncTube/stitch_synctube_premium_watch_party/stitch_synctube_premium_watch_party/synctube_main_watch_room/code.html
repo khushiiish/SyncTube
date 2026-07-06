@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SyncTube - Watch Room</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#d0bcff",
+                        "secondary-container": "#571bc1",
+                        "surface-container-low": "#1c1b1d",
+                        "on-primary-fixed": "#410004",
+                        "surface-container": "#201f22",
+                        "surface-container-highest": "#353437",
+                        "on-secondary-container": "#c4abff",
+                        "on-tertiary-container": "#00285d",
+                        "on-background": "#e5e1e4",
+                        "surface-variant": "#353437",
+                        "on-primary-container": "#5c0008",
+                        "inverse-on-surface": "#313032",
+                        "tertiary-fixed": "#d8e2ff",
+                        "on-surface": "#e5e1e4",
+                        "on-tertiary": "#002e6a",
+                        "surface-container-lowest": "#0e0e10",
+                        "surface-container-high": "#2a2a2c",
+                        "on-primary-fixed-variant": "#930013",
+                        "surface-tint": "#ffb3ad",
+                        "secondary-fixed": "#e9ddff",
+                        "on-surface-variant": "#e4beba",
+                        "surface": "#131315",
+                        "error": "#ffb4ab",
+                        "error-container": "#93000a",
+                        "on-error": "#690005",
+                        "outline-variant": "#5b403e",
+                        "tertiary": "#adc6ff",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "tertiary-container": "#4d8eff",
+                        "surface-bright": "#39393b",
+                        "primary-fixed-dim": "#ffb3ad",
+                        "on-tertiary-fixed-variant": "#004395",
+                        "tertiary-fixed-dim": "#adc6ff",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-fixed": "#23005c",
+                        "primary-container": "#ff5451",
+                        "on-primary": "#68000a",
+                        "primary-fixed": "#ffdad7",
+                        "background": "#131315",
+                        "on-secondary": "#3c0091",
+                        "inverse-primary": "#b91a24",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "inverse-surface": "#e5e1e4",
+                        "on-tertiary-fixed": "#001a42",
+                        "primary": "#ffb3ad",
+                        "surface-dim": "#131315",
+                        "outline": "#ab8986"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-max": "1440px",
+                        "lg": "24px",
+                        "xl": "40px",
+                        "sm": "8px",
+                        "gutter": "20px",
+                        "base": "4px",
+                        "xs": "4px",
+                        "md": "16px",
+                        "2xl": "64px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "display-hero": ["Geist"],
+                        "body-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg": ["Geist"],
+                        "display-hero-mobile": ["Geist"],
+                        "label-xs": ["Geist"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-hero": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "700" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "display-hero-mobile": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-xs": ["12px", { "lineHeight": "14px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: theme('colors.background'); color: theme('colors.on-background'); }
+        .glass-panel { background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(12px); border: 1px solid #27272A; }
+        .glass-floating { background: rgba(17, 24, 39, 0.8); backdrop-filter: blur(20px); border: 1px solid #27272A; }
+        .pulse-green { animation: pulseGreen 2s infinite; }
+        @keyframes pulseGreen {
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+        
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: theme('colors.surface-variant'); border-radius: theme('borderRadius.full'); }
+        ::-webkit-scrollbar-thumb:hover { background: theme('colors.outline'); }
+    </style>
+</head>
+<body class="h-screen w-full overflow-hidden flex flex-col font-body-md text-body-md relative">
+<!-- TopNavBar -->
+<header class="bg-surface/60 backdrop-blur-md shadow-sm fixed top-0 w-full z-50 flex justify-between items-center px-lg py-md border-b border-outline-variant/20">
+<div class="flex items-center gap-md">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">SyncTube</h1>
+<div class="h-6 w-px bg-outline-variant/30 hidden md:block"></div>
+<div class="hidden md:flex items-center gap-sm glass-floating px-3 py-1 rounded-full">
+<span class="w-2 h-2 rounded-full bg-green-500 pulse-green"></span>
+<span class="font-label-md text-label-md text-on-surface">Main Room</span>
+<span class="font-label-xs text-label-xs text-on-surface-variant ml-2 bg-surface px-2 py-0.5 rounded">#ST-8X92</span>
+<button aria-label="Copy Link" class="material-symbols-outlined text-[16px] text-on-surface-variant hover:text-primary transition-colors ml-1" data-icon="content_copy">content_copy</button>
+</div>
+</div>
+<nav class="hidden md:flex items-center gap-lg">
+<a class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200" href="#">Discover</a>
+<a class="text-primary font-bold border-b-2 border-primary pb-1" href="#">Rooms</a>
+<a class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200" href="#">Trends</a>
+</nav>
+<div class="flex items-center gap-md">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-200 scale-95 duration-150" data-icon="notifications">notifications</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-200 scale-95 duration-150" data-icon="search">search</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-200 scale-95 duration-150" data-icon="settings">settings</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant/30 ml-2">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A detailed headshot portrait of a young person in a dimly lit, neon-accented streaming room. They are looking confidently at the camera. Soft purple and blue lighting highlights their face, creating a moody, premium tech aesthetic. Sharp focus, cinematic lighting, 8k resolution." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBj_-KoiPnavPAy18KGXdv2a8ikYFzukeYqbYsCnEEqOSGKiOj9_4v_2nm_QkwxGB7uTMpXF88CcuWHBnshqy3ukQqdk-2bnWxNlmBjNX9EFeXvi69tUB7hCfilGXleQJjflzhGVasjtl9H7xaJA0WinGbfhF4V4HyKOmJrXL9gRGD-Z2PsFZ0JWTWXiPM0EP4Evd8NJQ7RO4EN0ZfmdWuU_4DsPchQthXtr2dmI7rljq9hbDpgAVE"/>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex pt-[72px] h-full">
+<!-- Video Canvas (Left 70%) -->
+<section class="flex-1 relative flex flex-col items-center justify-center p-md lg:p-lg bg-surface-container-lowest overflow-hidden">
+<!-- Ambient Glow -->
+<div class="absolute inset-0 z-0 flex items-center justify-center opacity-30 pointer-events-none">
+<div class="w-3/4 h-3/4 bg-primary/20 rounded-full blur-[120px]"></div>
+</div>
+<!-- Video Player Container -->
+<div class="w-full max-w-5xl aspect-video rounded-xl overflow-hidden relative z-10 shadow-2xl group border border-outline-variant/10 bg-black">
+<img alt="Video Content" class="w-full h-full object-cover opacity-90" data-alt="A cinematic still from a breathtaking sci-fi movie. A massive, intricately detailed spaceship is seen entering the atmosphere of a dark, mysterious planet with glowing rings. Deep blacks, vivid neon blue thrusters, dramatic contrast. High budget visual effects style, pristine clarity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyivmA1zPyUntyT_5sIzYvUwgQ6HhwD1LwTfn92ic95d1l0Jiao4f5NkPnn8bp1W0kRmHOLwXGdS9rXEdF5LYAFRNNSfRaK2BCkrHQYnt3YoI2yf8_Tssb1CERddvNdKyFd9Jir1AJLKqgHECsCz_leYwqGeNeYvUsrJ_EqVqVjXvQZI79lZ6AqmCL6NcaRMwNKhvKeR9Vun6pnt-IWyPaH_BYkfqWLSZkvOVf-EDuFSiQQOFbKSw"/>
+<!-- Floating Controls Overlay (Visible on hover or active) -->
+<div class="absolute bottom-0 left-0 w-full p-md bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end">
+<!-- Progress Bar -->
+<div class="w-full h-1.5 bg-surface-variant/50 rounded-full mb-4 cursor-pointer relative overflow-hidden group/bar">
+<div class="absolute top-0 left-0 h-full bg-primary w-1/3 rounded-full relative">
+<div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover/bar:opacity-100 transition-opacity"></div>
+</div>
+<div class="absolute top-0 left-0 h-full bg-on-surface/20 w-1/2 rounded-full z-[-1]"></div>
+</div>
+<!-- Controls Row -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4">
+<button class="text-on-surface hover:text-primary transition-colors material-symbols-outlined text-[28px]" data-icon="play_arrow" data-weight="fill">play_arrow</button>
+<button class="text-on-surface hover:text-primary transition-colors material-symbols-outlined" data-icon="skip_next" data-weight="fill">skip_next</button>
+<div class="flex items-center gap-2 group/vol relative ml-2">
+<button class="text-on-surface hover:text-primary transition-colors material-symbols-outlined" data-icon="volume_up" data-weight="fill">volume_up</button>
+<div class="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 ease-out flex items-center">
+<div class="w-full h-1 bg-surface-variant/50 rounded-full cursor-pointer relative">
+<div class="absolute top-0 left-0 h-full bg-primary w-3/4 rounded-full"></div>
+</div>
+</div>
+</div>
+<span class="font-label-xs text-label-xs text-on-surface-variant ml-2">1:24:05 / 2:35:10</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface hover:text-primary transition-colors material-symbols-outlined" data-icon="closed_caption">closed_caption</button>
+<button class="text-on-surface hover:text-primary transition-colors material-symbols-outlined" data-icon="settings">settings</button>
+<button class="text-on-surface hover:text-primary transition-colors material-symbols-outlined" data-icon="fullscreen">fullscreen</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Title & Metadata -->
+<div class="w-full max-w-5xl mt-lg flex justify-between items-start z-10">
+<div>
+<h2 class="font-headline-lg text-headline-lg font-semibold text-on-surface mb-2">Interstellar 4K Remaster - Watch Party</h2>
+<div class="flex items-center gap-4 text-on-surface-variant font-label-md text-label-md">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px]" data-icon="visibility">visibility</span> 12 Watching</span>
+<span>•</span>
+<span class="text-primary-container">Synced</span>
+</div>
+</div>
+<button class="glass-panel px-4 py-2 rounded-lg font-label-md text-label-md text-on-surface hover:bg-surface-variant transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined" data-icon="share">share</span> Share
+                </button>
+</div>
+</section>
+<!-- SideNavBar (Right 30%) -->
+<aside class="hidden md:flex flex-col w-[320px] lg:w-[380px] h-full bg-surface-container/80 backdrop-blur-xl border-l border-outline-variant/20 shadow-xl z-40 relative">
+<!-- SideNav Header -->
+<div class="p-lg border-b border-outline-variant/10 flex items-center gap-4">
+<div class="w-12 h-12 rounded-xl overflow-hidden border border-outline-variant/30">
+<img alt="Host Avatar" class="w-full h-full object-cover" data-alt="A close-up portrait of an intense, creative individual in a dark room illuminated by multiple computer monitors. Deep cinematic blue and purple light reflects on their face. High contrast, sharp details, modern cyberpunk aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBH-pg3xldvRPpYZK5Bwy8sbT4-ZqLuKosLjEMrG6a2WA0uCMXaBpW5FPBPvQkW9z-KVbGiLVuHZ1a4-OcMe6HIuhGxIrBZu6JZ5oJ6HSxtXhyBNlVufnkOH2UpSPU9gTxkz32kXIO1xU-elMFZxQUFcQ1B8D3OO1gHrcR200J5q0xTdvzntggR5NPhuh_A692-JXIhxi70RZ1KCV7Eae9VVOl4mrFmqZTI2osrTtSfQxF117JJgTY"/>
+</div>
+<div class="flex-1">
+<h3 class="font-headline-sm text-headline-sm font-bold text-primary">Main Room</h3>
+<p class="font-label-xs text-label-xs text-on-surface-variant truncate">Hosting: Interstellar 4K</p>
+</div>
+</div>
+<!-- Tabs -->
+<div class="flex border-b border-outline-variant/10 px-md pt-sm">
+<button class="flex-1 pb-3 pt-2 text-primary font-bold border-b-2 border-primary transition-colors flex items-center justify-center gap-2 relative">
+<span class="material-symbols-outlined text-[18px]" data-icon="group" data-weight="fill">group</span>
+<span class="font-label-md text-label-md">Participants</span>
+<span class="absolute top-1 right-2 w-2 h-2 bg-primary rounded-full"></span>
+</button>
+<button class="flex-1 pb-3 pt-2 text-on-surface-variant font-medium hover:text-primary transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]" data-icon="chat_bubble">chat_bubble</span>
+<span class="font-label-md text-label-md">Chat</span>
+</button>
+<button class="flex-1 pb-3 pt-2 text-on-surface-variant font-medium hover:text-primary transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]" data-icon="playlist_play">playlist_play</span>
+<span class="font-label-md text-label-md">Queue</span>
+</button>
+</div>
+<!-- Participants List -->
+<div class="flex-1 overflow-y-auto p-md space-y-2">
+<!-- Participant: Host -->
+<div class="glass-panel rounded-xl p-3 flex items-center gap-3 group relative overflow-hidden">
+<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<div class="relative">
+<div class="w-10 h-10 rounded-full overflow-hidden border border-primary">
+<img alt="User" class="w-full h-full object-cover" data-alt="A portrait of a young person, the host, lit by subtle neon lights." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDuLyOFdVyZKSo1aAzyGVg6HPNQEuQTdyqI10M2Vgzge1ysI3sqYSHLK0Dfz42fmIoRnC8bnUAB86-G8M6xIXZGJO50Sru-EMEGMfHJtZ7CkPYUNzxH0DSzmLQrJNBw1-kGwoBIuGK02Amn6hbqlIYEBz0SERKly9PNBD9zCZU4gkl3t5PG45ZdTHqZa-HN3KfqXeoxwyMUyzI3YlUMRDmW4ssHQ53TdihX5626xhPtUMYfxEn4iT4"/>
+</div>
+<div class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-surface-container"></div>
+</div>
+<div class="flex-1 z-10">
+<div class="flex items-center gap-2">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Alex M.</span>
+<span class="bg-primary-container text-on-primary-container text-[10px] uppercase px-1.5 py-0.5 rounded font-bold">Host</span>
+</div>
+<span class="font-label-xs text-label-xs text-on-surface-variant">Syncing 0ms</span>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary z-10 opacity-0 group-hover:opacity-100 transition-opacity" data-icon="more_vert">more_vert</button>
+</div>
+<!-- Participant: Normal -->
+<div class="rounded-xl p-3 flex items-center gap-3 group hover:bg-surface-variant/30 transition-colors border border-transparent hover:border-outline-variant/10">
+<div class="relative">
+<div class="w-10 h-10 rounded-full overflow-hidden border border-outline-variant/30">
+<img alt="User" class="w-full h-full object-cover" data-alt="A casual portrait of a friend watching a movie, softly lit." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBsXW9rM3_hglwPLouE8CTEzbWfgsJ_HRbxwTeSS3xMd38orGBCOKzWJr6xjisntEmv-hKXg6T86wwrmao1jajiedA8zZewtxqe_DBCJYgz4EtCBNY3XWnIoS9zLC7KG4PclAR8mmB4pc0Qq7Kq63FFPbpwWO64iJaRhiygs6jQhLglVzkq7UUlOSBO3yGOUG6b8dvGD6m8CbHQC4YCsvrqQjCbRT3EfBH1A0mI1U8UIwqWnK62Duk"/>
+</div>
+<div class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-surface-container"></div>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2">
+<span class="font-label-md text-label-md text-on-surface">Sarah K.</span>
+</div>
+<span class="font-label-xs text-label-xs text-on-surface-variant">Syncing +4ms</span>
+</div>
+<!-- Host Actions Menu (Simulated Hover State for demonstration) -->
+<div class="hidden group-hover:flex items-center gap-1 bg-surface-container-high rounded-lg p-1 shadow-md border border-outline-variant/20 absolute right-2 z-20">
+<button class="p-1.5 rounded hover:bg-surface-variant text-on-surface-variant hover:text-primary transition-colors" title="Promote to Host">
+<span class="material-symbols-outlined text-[16px]" data-icon="star">star</span>
+</button>
+<button class="p-1.5 rounded hover:bg-surface-variant text-on-surface-variant hover:text-error transition-colors" title="Remove">
+<span class="material-symbols-outlined text-[16px]" data-icon="person_remove">person_remove</span>
+</button>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary group-hover:hidden transition-opacity" data-icon="more_vert">more_vert</button>
+</div>
+<!-- Participant: Lagging -->
+<div class="rounded-xl p-3 flex items-center gap-3 group hover:bg-surface-variant/30 transition-colors border border-transparent hover:border-outline-variant/10">
+<div class="relative">
+<div class="w-10 h-10 rounded-full overflow-hidden border border-outline-variant/30">
+<img alt="User" class="w-full h-full object-cover" data-alt="A casual portrait of another friend watching a movie, softly lit." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAaDBBMEgekm6NfjIRK24h7rfhyWmXmSl_fDICKZtU_I0YkZcbEXKG_CiwVdxKcpwyOi5mOnNXl9hgW4WT8AfbHN25uGLW1oRw45DlPmBSyNbYMOEM3Q6LyTCdRenCXjau1zfcnAWpGneTvyQdp03tQxPZVBLCD3ZXj8TzVlgUN8ReDUbB6pYZFqgGWiHZkI_CEAPlcglJCgvHSD7sA1KAJ71OfYkodNxcSH-bw5QadkrA0X2cpB7M"/>
+</div>
+<div class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-yellow-500 rounded-full border-2 border-surface-container"></div>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2">
+<span class="font-label-md text-label-md text-on-surface">Chris B.</span>
+</div>
+<span class="font-label-xs text-label-xs text-yellow-500">Buffering...</span>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-opacity" data-icon="more_vert">more_vert</button>
+</div>
+</div>
+<!-- SideNav Footer Actions -->
+<div class="p-md border-t border-outline-variant/10 space-y-3">
+<button class="w-full py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-lg font-label-md text-label-md font-semibold transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]" data-icon="person_add">person_add</span>
+                    Invite Friends
+                </button>
+<div class="flex justify-between items-center px-2">
+<button class="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]" data-icon="help">help</span>
+<span class="font-label-xs text-label-xs">Help</span>
+</button>
+<button class="text-on-surface-variant hover:text-error transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]" data-icon="logout">logout</span>
+<span class="font-label-xs text-label-xs">Leave</span>
+</button>
+</div>
+</div>
+</aside>
+</main>
+<!-- Toast Notification -->
+<div class="fixed bottom-xl left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+<div class="glass-floating px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-[slideUp_0.3s_ease-out]">
+<div class="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[18px]" data-icon="login">login</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">John joined the room</p>
+<p class="font-label-xs text-label-xs text-on-surface-variant">Syncing playback...</p>
+</div>
+</div>
+</div>
+<style>
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</body></html>

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SyncTube Mobile Watch Experience</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#d0bcff",
+                        "secondary-container": "#571bc1",
+                        "surface-container-low": "#1c1b1d",
+                        "on-primary-fixed": "#410004",
+                        "surface-container": "#201f22",
+                        "surface-container-highest": "#353437",
+                        "on-secondary-container": "#c4abff",
+                        "on-tertiary-container": "#00285d",
+                        "on-background": "#e5e1e4",
+                        "surface-variant": "#353437",
+                        "on-primary-container": "#5c0008",
+                        "inverse-on-surface": "#313032",
+                        "tertiary-fixed": "#d8e2ff",
+                        "on-surface": "#e5e1e4",
+                        "on-tertiary": "#002e6a",
+                        "surface-container-lowest": "#0e0e10",
+                        "surface-container-high": "#2a2a2c",
+                        "on-primary-fixed-variant": "#930013",
+                        "surface-tint": "#ffb3ad",
+                        "secondary-fixed": "#e9ddff",
+                        "on-surface-variant": "#e4beba",
+                        "surface": "#131315",
+                        "error": "#ffb4ab",
+                        "error-container": "#93000a",
+                        "on-error": "#690005",
+                        "outline-variant": "#5b403e",
+                        "tertiary": "#adc6ff",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "tertiary-container": "#4d8eff",
+                        "surface-bright": "#39393b",
+                        "primary-fixed-dim": "#ffb3ad",
+                        "on-tertiary-fixed-variant": "#004395",
+                        "tertiary-fixed-dim": "#adc6ff",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-fixed": "#23005c",
+                        "primary-container": "#ff5451",
+                        "on-primary": "#68000a",
+                        "primary-fixed": "#ffdad7",
+                        "background": "#131315",
+                        "on-secondary": "#3c0091",
+                        "inverse-primary": "#b91a24",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "inverse-surface": "#e5e1e4",
+                        "on-tertiary-fixed": "#001a42",
+                        "primary": "#ffb3ad",
+                        "surface-dim": "#131315",
+                        "outline": "#ab8986"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-max": "1440px",
+                        "lg": "24px",
+                        "xl": "40px",
+                        "sm": "8px",
+                        "gutter": "20px",
+                        "base": "4px",
+                        "xs": "4px",
+                        "md": "16px",
+                        "2xl": "64px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Geist", "sans-serif"],
+                        "headline-md": ["Geist", "sans-serif"],
+                        "display-hero": ["Geist", "sans-serif"],
+                        "body-sm": ["Inter", "sans-serif"],
+                        "body-lg": ["Inter", "sans-serif"],
+                        "body-md": ["Inter", "sans-serif"],
+                        "headline-lg": ["Geist", "sans-serif"],
+                        "display-hero-mobile": ["Geist", "sans-serif"],
+                        "label-xs": ["Geist", "sans-serif"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-hero": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "700" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "display-hero-mobile": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-xs": ["12px", { "lineHeight": "14px", "fontWeight": "500" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background-color: rgba(17, 24, 39, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid #27272A;
+        }
+        .glass-overlay {
+            background-color: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid #27272A;
+        }
+        /* Hide scrollbar for clean UI */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md h-screen w-screen overflow-hidden flex flex-col relative antialiased">
+<!-- Toast Notification (Absolute Top) -->
+<div class="absolute top-sm left-1/2 -translate-x-1/2 z-[100] glass-overlay rounded-full px-md py-sm flex items-center gap-sm transform transition-all duration-300 opacity-0 -translate-y-full" id="toast-notification">
+<span class="material-symbols-outlined text-primary text-[20px]" data-weight="fill" style="font-variation-settings: 'FILL' 1;">person_add</span>
+<span class="font-label-md text-label-md text-on-surface">Alex joined the room</span>
+</div>
+<!-- Top Navigation Area (Mobile Optimized, Sticky) -->
+<header class="w-full bg-surface/60 backdrop-blur-md flex justify-between items-center px-md py-sm border-b border-outline-variant/20 shadow-sm z-50 sticky top-0 shrink-0">
+<div class="flex items-center gap-sm">
+<span class="font-headline-md text-headline-md font-bold text-primary">SyncTube</span>
+<span class="bg-surface-variant text-on-surface-variant font-label-xs text-label-xs px-2 py-1 rounded-full flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                Live
+            </span>
+</div>
+<div class="flex items-center gap-md">
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-200 scale-95 active:scale-95 duration-150">
+<span class="material-symbols-outlined">search</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-200 scale-95 active:scale-95 duration-150 relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-primary rounded-full"></span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant/50">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A close up, high resolution portrait of a young adult with a cyberpunk aesthetic, neon lighting accents, wearing a futuristic dark hoodie. The background is slightly blurred showing abstract city lights at night." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAR9KQR-JkU_h4EWD3bOzZPa14KYw6jwt2DAyRiZpOKZu1H7oNC02xD4H03R3ozBKQhteLD04P38Dj4gKUgCuSpFQMOOSH8SNLmSOiqNPa6y7uR86622pUv8XTD5EtlBvDNibiNvEaZIxdkt7DWTyCGv2FA_2PHe8EIHeIaJHLXNTjmiPAyJxqn_rvFHUCoXQQao2Vf0PlbTZkEb0-TRtfl2LIGmBZc0AZMbJkvtM65hlIZmUu-4eo"/>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col relative w-full h-full overflow-hidden">
+<!-- Sticky Video Player Area -->
+<div class="w-full aspect-video bg-black relative shrink-0 z-40 shadow-xl group">
+<!-- Video Placeholder Image -->
+<img alt="Video Content" class="w-full h-full object-cover" data-alt="A stunning, ultra-wide cinematic shot of an interstellar spaceship traversing a colorful nebula. High contrast, deep blacks, vibrant purple and blue cosmic dust clouds. Sleek, hyper-realistic sci-fi design." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-60ZHbJEQKplTIuEwnUbi0kFoqNDbrXfMQcf4Mf7MKrPQVijYi7CWurg7gancByDMZkBbCjr__XRdCi3wa1coAoNuALGlZDIOMdmImBnlPrP-OqQ-qRelD88W3Q9Gp7zQpDr66d1QGV3pM9J1_5l_Td_u3ooZzhXWaqhhJv1xORHMc2j3VOYhjShj_eBQ0t4tNGXcqBvxkCQlsgSvjw63C7S0s8s6iogiJgrygI6FAQPNXfjK-jY"/>
+<!-- Video Overlay Gradients -->
+<div class="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+<!-- Floating Controls Overlay -->
+<div class="absolute inset-0 flex flex-col justify-between p-md opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+<!-- Top Controls -->
+<div class="flex justify-between items-center">
+<span class="font-label-md text-label-md text-white bg-black/50 px-2 py-1 rounded backdrop-blur-sm">Main Room</span>
+<button class="text-white hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+<!-- Center Play/Pause -->
+<div class="flex justify-center items-center gap-xl">
+<button class="text-white/80 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[36px]">replay_10</span>
+</button>
+<button class="text-white hover:scale-110 transition-transform bg-primary/90 p-4 rounded-full backdrop-blur-md shadow-[0_0_20px_rgba(255,179,173,0.3)]">
+<span class="material-symbols-outlined text-[48px]" data-weight="fill" style="font-variation-settings: 'FILL' 1;">pause</span>
+</button>
+<button class="text-white/80 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[36px]">forward_10</span>
+</button>
+</div>
+<!-- Bottom Progress & Controls -->
+<div class="flex flex-col gap-sm">
+<!-- Progress Bar -->
+<div class="w-full h-1 bg-surface-variant/50 rounded-full overflow-hidden relative cursor-pointer">
+<div class="absolute top-0 left-0 h-full bg-primary w-[45%]"></div>
+<div class="absolute top-1/2 -translate-y-1/2 left-[45%] w-3 h-3 bg-white rounded-full shadow"></div>
+</div>
+<div class="flex justify-between items-center text-white/80 font-label-xs text-label-xs">
+<span>42:15 / 1:35:00</span>
+<div class="flex gap-md">
+<button class="hover:text-white"><span class="material-symbols-outlined text-[20px]">closed_caption</span></button>
+<button class="hover:text-white"><span class="material-symbols-outlined text-[20px]">settings</span></button>
+<button class="hover:text-white"><span class="material-symbols-outlined text-[20px]">fullscreen</span></button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Scrollable Lower Section (Chat/Activity) -->
+<div class="flex-1 overflow-y-auto no-scrollbar relative bg-surface flex flex-col pb-[72px]"> <!-- Padding bottom for nav -->
+<!-- Context Header -->
+<div class="px-md py-sm border-b border-outline-variant/10 flex justify-between items-center sticky top-0 bg-surface/90 backdrop-blur-md z-10">
+<div>
+<h2 class="font-headline-sm text-[18px] font-bold text-on-surface">Interstellar 4K</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Hosting: Cosmic Explorer</p>
+</div>
+<button class="px-4 py-2 bg-transparent border border-outline-variant text-on-surface font-label-md text-label-md rounded-full hover:bg-surface-variant transition-colors">
+                    Invite
+                </button>
+</div>
+<!-- Chat Area -->
+<div class="flex-1 p-md flex flex-col gap-md">
+<!-- Chat Message -->
+<div class="flex gap-sm">
+<img alt="Avatar" class="w-8 h-8 rounded-full border border-outline-variant/30 shrink-0" data-alt="A small avatar image of a stylized cyber-dog with glowing visor, neon blue and pink background, dark mode UI style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCWe-It162XZVr8JU9n2V5feV8tupzZgR9ENBcNEKRf5pP5YvO3JwyDoFBRyskx5aaY5OvDkfSB-U6SRkPWJqiyjwYlxY71NyPWbaeDx41X5y-VBz29ChQk7FT2N7gtv6O18-hOBiK6E9RaG7L1cHR7PWT0Qo0OsdWfhn9ZClHnjD4bYw2KsIjTnfElFvog0bVDgmv4mAJ5fJb5VELx86STmLqah-t5084U4_7LL0kDA_ROnvcWU0Y"/>
+<div class="flex flex-col">
+<span class="font-label-xs text-label-xs text-on-surface-variant mb-1">NeonBite <span class="text-on-surface-variant/50 ml-2">12:04</span></span>
+<div class="glass-panel rounded-lg rounded-tl-none p-3 text-body-sm text-on-surface inline-block max-w-[85%]">
+                            This scene always gives me chills! The score is incredible.
+                        </div>
+</div>
+</div>
+<!-- Chat Message (Self) -->
+<div class="flex gap-sm flex-row-reverse">
+<img alt="Avatar" class="w-8 h-8 rounded-full border border-primary/50 shrink-0" data-alt="A close up, high resolution portrait of a young adult with a cyberpunk aesthetic, neon lighting accents, wearing a futuristic dark hoodie. The background is slightly blurred showing abstract city lights at night." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5n6Sp8u6PqbHBf_WMp9vRVGII-mDgWi7kNVtWsyB-w36C8G5o-WFwVVCFkpzl0gMiXpyjavx1LrWybZwpf58-mfd-f4h_5KS3vzSbj9vHddll9_JqNzBje1TPoMhy0yodBIzoxAjW0vgFRSnKe8zRGrqL6W8XTMVuaEIsqKCsq9VSjMBycE3QKf_whnMtiTghtXOKgduoFMO7NlIeWdMQNfvvyQ6ApK0eAJfXiyMqiTQeX-WpOxk"/>
+<div class="flex flex-col items-end">
+<span class="font-label-xs text-label-xs text-on-surface-variant mb-1"><span class="text-on-surface-variant/50 mr-2">12:05</span> You</span>
+<div class="bg-surface-container-high rounded-lg rounded-tr-none p-3 text-body-sm text-on-surface inline-block max-w-[85%] border border-outline-variant/20">
+                            Zimmer's finest work honestly. The organ tracking is insane.
+                        </div>
+</div>
+</div>
+<!-- Chat Message with Action -->
+<div class="flex gap-sm">
+<img alt="Avatar" class="w-8 h-8 rounded-full border border-outline-variant/30 shrink-0" data-alt="A minimalist abstract geometric avatar consisting of floating intersecting cubes in dark greys with a subtle red glowing core. Dark UI context." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAgu_eKKvq9KAbpjnHCI7cY7cTZkCQ1c1agntoU2Vb_tcJzMeVHJcRdDEX2uiDyEuEgxY73ZhKb2xsd5iJdvzMXkopkB26lQiZ0KFCDv50qBjfPMwqhUt71Fa8mY3HBpTzQg-blVmXQueeQcq2z5d5Dq5fqBYy03cdtJbkt82UHChmHpNin2e9GAh9gKDV5XdzMT9z-R8b7-GqyH1ys2CVEfYrX24EbJNuaAYpKd77iEHB1gbEhodE"/>
+<div class="flex flex-col">
+<span class="font-label-xs text-label-xs text-on-surface-variant mb-1">SysAdmin <span class="text-on-surface-variant/50 ml-2">12:07</span></span>
+<div class="glass-panel rounded-lg rounded-tl-none p-3 text-body-sm text-on-surface inline-block max-w-[85%]">
+                            Queue updated. Next up: Inception 4K Remaster.
+                            <div class="mt-2 p-2 bg-surface-container-lowest rounded border border-outline-variant/30 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]">movie</span>
+<span class="font-label-xs text-label-xs truncate">Inception 4K Remaster</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Chat Input (Sticky Bottom above Nav) -->
+<div class="sticky bottom-0 w-full p-sm bg-surface-container/90 backdrop-blur-xl border-t border-outline-variant/10">
+<div class="flex items-center gap-sm bg-surface-container-lowest rounded-full border border-outline-variant/30 px-3 py-2">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">sentiment_satisfied</span>
+</button>
+<input class="flex-1 bg-transparent border-none text-body-sm text-on-surface placeholder:text-on-surface-variant/50 focus:ring-0 p-0 m-0 outline-none" placeholder="Say something..." type="text"/>
+<button class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-[18px]">send</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar (Mobile Shell) -->
+<nav class="w-full bg-surface-container/80 backdrop-blur-xl border-t border-outline-variant/10 shadow-xl fixed bottom-0 z-50 flex justify-around items-center px-sm py-2 pb-safe">
+<!-- Participants (Inactive) -->
+<button class="flex flex-col items-center gap-1 p-2 min-w-[64px] text-on-surface-variant hover:text-primary transition-colors duration-200" onclick="toggleDrawer()">
+<span class="material-symbols-outlined text-[24px]">group</span>
+<span class="font-label-xs text-[10px]">Participants</span>
+</button>
+<!-- Chat (Active) -->
+<button class="flex flex-col items-center gap-1 p-2 min-w-[64px] text-primary font-bold active:scale-95 transition-transform">
+<div class="bg-secondary-container/20 px-4 py-1 rounded-full mb-1">
+<span class="material-symbols-outlined text-[24px] text-primary" data-weight="fill" style="font-variation-settings: 'FILL' 1;">chat_bubble</span>
+</div>
+<span class="font-label-xs text-[10px]">Chat</span>
+</button>
+<!-- Queue (Inactive) -->
+<button class="flex flex-col items-center gap-1 p-2 min-w-[64px] text-on-surface-variant hover:text-primary transition-colors duration-200">
+<span class="material-symbols-outlined text-[24px]">playlist_play</span>
+<span class="font-label-xs text-[10px]">Queue</span>
+</button>
+<!-- Settings (Inactive) -->
+<button class="flex flex-col items-center gap-1 p-2 min-w-[64px] text-on-surface-variant hover:text-primary transition-colors duration-200">
+<span class="material-symbols-outlined text-[24px]">settings</span>
+<span class="font-label-xs text-[10px]">Settings</span>
+</button>
+</nav>
+<!-- Collapsible Participant Drawer (Overlay) -->
+<div class="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300" id="participant-drawer">
+<div class="absolute bottom-0 w-full h-[618px] bg-surface-container border-t border-outline-variant/20 rounded-t-2xl shadow-2xl transform translate-y-full transition-transform duration-300 flex flex-col" id="drawer-content">
+<!-- Drawer Header (Drag Handle area) -->
+<div class="w-full flex flex-col items-center pt-3 pb-2 border-b border-outline-variant/10" onclick="toggleDrawer()">
+<div class="w-12 h-1.5 bg-outline-variant/50 rounded-full mb-3"></div>
+<div class="w-full px-md flex justify-between items-center">
+<h3 class="font-headline-md text-[20px] text-on-surface">Participants (4)</h3>
+<button class="text-on-surface-variant hover:text-primary">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+</div>
+<!-- Drawer Content (List) -->
+<div class="flex-1 overflow-y-auto p-md flex flex-col gap-2">
+<!-- Host -->
+<div class="flex items-center justify-between p-3 glass-panel rounded-lg">
+<div class="flex items-center gap-3">
+<div class="relative">
+<img alt="Host" class="w-10 h-10 rounded-full object-cover" data-alt="A sleek dark mode avatar depicting an abstract glowing cosmic entity, deep blues and purples, subtle starry background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCR6G8aNi4W_tugpf3WYXhTbrP-LqlsFnljVX6aQ7c0MycKY_bOIuWUnpoGvPVXM3siexEaNCkCEcF5nboNIAqhAjaf7nNx3h3HMMdDfLuBVOTc3LNw2_MVr99pSjqbE5-h1vgpB-_4uDPNZ9GjGfMtH7veFegRC-zgKZcvhOH04qqPGU4Q19LlIF_pnrCg9yGPjTJNRtI7IU1jpf12xajLAuaJfYTjrnVJZkC3Nx6lakB3jHxGTAM"/>
+<div class="absolute -bottom-1 -right-1 bg-surface rounded-full p-0.5">
+<div class="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
+</div>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">Cosmic Explorer</p>
+<p class="font-body-sm text-[12px] text-primary">Host</p>
+</div>
+</div>
+<div class="flex gap-2">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">mic</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">videocam</span>
+</div>
+</div>
+<!-- User 1 -->
+<div class="flex items-center justify-between p-3 bg-surface rounded-lg border border-outline-variant/10">
+<div class="flex items-center gap-3">
+<div class="relative">
+<img alt="User" class="w-10 h-10 rounded-full object-cover" data-alt="A small avatar image of a stylized cyber-dog with glowing visor, neon blue and pink background, dark mode UI style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDEZlD78_BWz7sHpBYvIU7VDRRvj0i6AWKMGcGkzz9b2oO2pfyotuXJqxKji2zRYeylnK-0z8viGwD27XRLVmjwd3V4HWIrUnB8BKMQkT7D18dBmLasPXhxWi9Hyra3XK_94Fsd9Kv_9EfrblSXw5eL0-Lw1VRrKERheMiSUyHiz0lgUPigNeXCTWRfFLiQrBlZIWHcV_nCFSyw-a1Iu_FKiFJFhlW55UEuAh-adjeghbMAXzPYro0"/>
+<div class="absolute -bottom-1 -right-1 bg-surface rounded-full p-0.5">
+<div class="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
+</div>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">NeonBite</p>
+</div>
+</div>
+<div class="flex gap-2">
+<span class="material-symbols-outlined text-error text-[20px]">mic_off</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">videocam_off</span>
+</div>
+</div>
+<!-- User 2 -->
+<div class="flex items-center justify-between p-3 bg-surface rounded-lg border border-outline-variant/10">
+<div class="flex items-center gap-3">
+<div class="relative">
+<img alt="User" class="w-10 h-10 rounded-full border border-primary/50 object-cover" data-alt="A close up, high resolution portrait of a young adult with a cyberpunk aesthetic, neon lighting accents, wearing a futuristic dark hoodie. The background is slightly blurred showing abstract city lights at night." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCloNo4_tkT9NAOlesTDwF-oZDNHaUCWu6mmMZMtJGC_V9TvD1940SApYxySU8hgxIjQvjDba0og09h5zEEbt2tdMpmSPXc7BwhzTnez6AntaiyqneGNpoXH8Qqa_qM_uUIzuxGZ1sVrUjDVtqDucIq_NBN2n3ubXzkfkqvr8zeXtSkX2wGEdm5GM7klc-qgrM950CEkK335yINB1qF41IrOZfMESPNtM6t_7OG51CKBlIk62NnUHQ"/>
+<div class="absolute -bottom-1 -right-1 bg-surface rounded-full p-0.5">
+<div class="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
+</div>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">You</p>
+</div>
+</div>
+<div class="flex gap-2">
+<span class="material-symbols-outlined text-error text-[20px]">mic_off</span>
+<span class="material-symbols-outlined text-error text-[20px]">videocam_off</span>
+</div>
+</div>
+</div>
+<!-- Drawer Footer Action -->
+<div class="p-md border-t border-outline-variant/10">
+<button class="w-full py-3 bg-primary/10 text-primary font-label-md text-label-md rounded-lg border border-primary/20 hover:bg-primary/20 transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">person_add</span>
+                    Invite Friends
+                </button>
+</div>
+</div>
+</div>
+<!-- Micro-interactions Script -->
+<script>
+        // Drawer Logic
+        const drawerOverlay = document.getElementById('participant-drawer');
+        const drawerContent = document.getElementById('drawer-content');
+        let isDrawerOpen = false;
+
+        function toggleDrawer() {
+            isDrawerOpen = !isDrawerOpen;
+            if (isDrawerOpen) {
+                drawerOverlay.classList.remove('opacity-0', 'pointer-events-none');
+                drawerOverlay.classList.add('opacity-100');
+                drawerContent.classList.remove('translate-y-full');
+                drawerContent.classList.add('translate-y-0');
+            } else {
+                drawerOverlay.classList.add('opacity-0', 'pointer-events-none');
+                drawerOverlay.classList.remove('opacity-100');
+                drawerContent.classList.add('translate-y-full');
+                drawerContent.classList.remove('translate-y-0');
+            }
+        }
+
+        // Close drawer if clicking outside content
+        drawerOverlay.addEventListener('click', (e) => {
+            if (e.target === drawerOverlay) {
+                toggleDrawer();
+            }
+        });
+
+        // Toast Demonstration (Shows on load for demonstration)
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const toast = document.getElementById('toast-notification');
+                toast.classList.remove('opacity-0', '-translate-y-full');
+                toast.classList.add('opacity-100', 'translate-y-0');
+                
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    toast.classList.remove('opacity-100', 'translate-y-0');
+                    toast.classList.add('opacity-0', '-translate-y-full');
+                }, 3000);
+            }, 1000);
+        });
+    </script>
+</body></html>
