@@ -13,8 +13,9 @@ const httpServer = http.createServer(app)
 /* =========================================================
    Middleware
    ========================================================= */
+const clientUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/$/, '') : null
 const allowedOrigins = [
-  process.env.CLIENT_URL,
+  clientUrl,
   'http://localhost:5173',
   'http://localhost:4173'
 ].filter(Boolean)

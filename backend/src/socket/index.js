@@ -8,8 +8,9 @@ const { registerRoomHandlers } = require('./roomHandlers')
  * @returns {import('socket.io').Server} io
  */
 function initSocket(httpServer) {
+  const clientUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/$/, '') : null
   const allowedOrigins = [
-    process.env.CLIENT_URL,
+    clientUrl,
     'http://localhost:5173',
     'http://localhost:4173'
   ].filter(Boolean)
