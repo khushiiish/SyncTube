@@ -29,6 +29,7 @@ export const EVENTS = {
   KICKED: 'kicked',
   CHAT_MESSAGE: 'chat_message',
   ERROR: 'error',
+  QUEUE_SYNC: 'queue_sync',
 }
 
 /**
@@ -78,4 +79,24 @@ export function emitSendChat(socket, { roomId, text }) {
 
 export function emitSyncRequest(socket, { roomId }) {
   socket.emit(EVENTS.SYNC_REQUEST, { roomId })
+}
+
+export function emitQueueAdd(socket, { roomId, videoId, title, thumbnail, duration }) {
+  socket.emit('queue_add', { roomId, videoId, title, thumbnail, duration })
+}
+
+export function emitQueueRemove(socket, { roomId, queueItemId }) {
+  socket.emit('queue_remove', { roomId, queueItemId })
+}
+
+export function emitQueueClear(socket, { roomId }) {
+  socket.emit('queue_clear', { roomId })
+}
+
+export function emitQueueReorder(socket, { roomId, newOrderIds }) {
+  socket.emit('queue_reorder', { roomId, newOrderIds })
+}
+
+export function emitQueueNext(socket, { roomId, currentVideoId }) {
+  socket.emit('queue_next', { roomId, currentVideoId })
 }

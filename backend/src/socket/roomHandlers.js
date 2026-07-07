@@ -17,6 +17,12 @@ const EVENTS = {
   TRANSFER_HOST:       'transfer_host',
   SEND_CHAT:           'send_chat',
   SYNC_REQUEST:        'sync_request',
+  QUEUE_ADD:           'queue_add',
+  QUEUE_REMOVE:        'queue_remove',
+  QUEUE_REORDER:       'queue_reorder',
+  QUEUE_CLEAR:         'queue_clear',
+  QUEUE_NEXT:          'queue_next',
+  QUEUE_SYNC:          'queue_sync',
   USER_JOINED:         'user_joined',
   USER_LEFT:           'user_left',
   SYNC_STATE:          'sync_state',
@@ -88,6 +94,7 @@ function registerRoomHandlers(socket, io) {
         },
         participants: room.participants,
         videoState:   room.videoState,
+        queue:        room.queue,
         currentUserRole: participant?.role || 'participant',
       })
 
@@ -353,10 +360,148 @@ function registerRoomHandlers(socket, io) {
         },
         participants: room.participants,
         videoState:   room.videoState,
+        queue:        room.queue,
         currentUserRole: participant?.role || 'participant',
       })
     } catch (err) {
       console.error('[Socket] sync_request error:', err.message)
+    }
+  })
+
+  /* -------------------------------------------------------
+   * queue_add — requires host or moderator
+   * -------------------------------------------------------
+   */
+  socket.on(EVENTS.QUEUE_ADD, async ({ roomId, videoId, title, thumbnail, duration }) => {
+    try {
+      const room = await roomService.findRoom(roomId)
+      if (!room.hasRole(socket.id, ['host', 'moderator'])) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host or moderator can add videos to the queue.' })
+        return
+      }
+
+      const updatedRoom = await roomService.addToQueue(roomId, {
+        videoId,
+        title,
+        thumbnail,
+        duration,
+        addedBy: socket.username || 'Anonymous',
+      })
+
+      // If no video is currently loaded, automatically pop and play the first item
+      if (!updatedRoom.videoState.videoId) {
+        const playedRoom = await roomService.popNextVideo(roomId)
+        io.to(roomId).emit(EVENTS.SYNC_STATE, {
+          videoState: playedRoom.videoState,
+          queue: playedRoom.queue,
+        })
+      } else {
+        io.to(roomId).emit(EVENTS.QUEUE_SYNC, { queue: updatedRoom.queue })
+      }
+    } catch (err) {
+      console.error('[Socket] queue_add error:', err.message)
+      socket.emit(EVENTS.ERROR, { message: err.message })
+    }
+  })
+
+  /* -------------------------------------------------------
+   * queue_remove — host can remove any, moderator can remove own
+   * -------------------------------------------------------
+   */
+  socket.on(EVENTS.QUEUE_REMOVE, async ({ roomId, queueItemId }) => {
+    try {
+      const room = await roomService.findRoom(roomId)
+      const participant = room.findParticipant(socket.id)
+      if (!participant) return
+
+      const item = room.queue.find(q => q._id.toString() === queueItemId)
+      if (!item) {
+        socket.emit(EVENTS.ERROR, { message: 'Queue item not found.' })
+        return
+      }
+
+      const isHost = participant.role === 'host'
+      const isMod = participant.role === 'moderator'
+      const isOwnItem = item.addedBy === participant.username
+
+      if (!isHost && !(isMod && isOwnItem)) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host, or moderator who added the video, can remove it.' })
+        return
+      }
+
+      const updatedRoom = await roomService.removeFromQueue(roomId, queueItemId)
+      io.to(roomId).emit(EVENTS.QUEUE_SYNC, { queue: updatedRoom.queue })
+    } catch (err) {
+      console.error('[Socket] queue_remove error:', err.message)
+      socket.emit(EVENTS.ERROR, { message: err.message })
+    }
+  })
+
+  /* -------------------------------------------------------
+   * queue_clear — requires host only
+   * -------------------------------------------------------
+   */
+  socket.on(EVENTS.QUEUE_CLEAR, async ({ roomId }) => {
+    try {
+      const room = await roomService.findRoom(roomId)
+      if (!room.hasRole(socket.id, 'host')) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host can clear the queue.' })
+        return
+      }
+
+      const updatedRoom = await roomService.clearQueue(roomId)
+      io.to(roomId).emit(EVENTS.QUEUE_SYNC, { queue: updatedRoom.queue })
+    } catch (err) {
+      console.error('[Socket] queue_clear error:', err.message)
+      socket.emit(EVENTS.ERROR, { message: err.message })
+    }
+  })
+
+  /* -------------------------------------------------------
+   * queue_reorder — requires host only
+   * -------------------------------------------------------
+   */
+  socket.on(EVENTS.QUEUE_REORDER, async ({ roomId, newOrderIds }) => {
+    try {
+      const room = await roomService.findRoom(roomId)
+      if (!room.hasRole(socket.id, 'host')) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host can reorder the queue.' })
+        return
+      }
+
+      const updatedRoom = await roomService.reorderQueue(roomId, newOrderIds)
+      io.to(roomId).emit(EVENTS.QUEUE_SYNC, { queue: updatedRoom.queue })
+    } catch (err) {
+      console.error('[Socket] queue_reorder error:', err.message)
+      socket.emit(EVENTS.ERROR, { message: err.message })
+    }
+  })
+
+  /* -------------------------------------------------------
+   * queue_next — pops next video in queue (requires host or mod)
+   * -------------------------------------------------------
+   */
+  socket.on(EVENTS.QUEUE_NEXT, async ({ roomId, currentVideoId }) => {
+    try {
+      const room = await roomService.findRoom(roomId)
+      if (!room.hasRole(socket.id, ['host', 'moderator'])) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host or moderator can skip videos.' })
+        return
+      }
+
+      // Race-condition prevention: only pop if the client's currentVideoId matches the database
+      if (currentVideoId && room.videoState.videoId !== currentVideoId) {
+        return
+      }
+
+      const updatedRoom = await roomService.popNextVideo(roomId)
+      io.to(roomId).emit(EVENTS.SYNC_STATE, {
+        videoState: updatedRoom.videoState,
+        queue: updatedRoom.queue,
+      })
+    } catch (err) {
+      console.error('[Socket] queue_next error:', err.message)
+      socket.emit(EVENTS.ERROR, { message: err.message })
     }
   })
 }

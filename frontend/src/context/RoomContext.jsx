@@ -24,6 +24,7 @@ const initialState = {
     isPlaying: false,
     currentTime: 0,
   },
+  queue: [],
   chatMessages: [],
 }
 
@@ -31,6 +32,9 @@ function roomReducer(state, action) {
   switch (action.type) {
     case 'SET_ROOM':
       return { ...state, room: action.payload }
+
+    case 'SET_QUEUE':
+      return { ...state, queue: action.payload }
 
     case 'SET_CURRENT_USER':
       return { ...state, currentUser: action.payload }
@@ -90,6 +94,7 @@ export function RoomProvider({ children }) {
   const canControl = isHost || isModerator
 
   const setRoom = useCallback((room) => dispatch({ type: 'SET_ROOM', payload: room }), [])
+  const setQueue = useCallback((q) => dispatch({ type: 'SET_QUEUE', payload: q }), [])
   const setCurrentUser = useCallback((user) => dispatch({ type: 'SET_CURRENT_USER', payload: user }), [])
   const setParticipants = useCallback((list) => dispatch({ type: 'SET_PARTICIPANTS', payload: list }), [])
   const addParticipant = useCallback((p) => dispatch({ type: 'ADD_PARTICIPANT', payload: p }), [])
@@ -106,6 +111,7 @@ export function RoomProvider({ children }) {
       isModerator,
       canControl,
       setRoom,
+      setQueue,
       setCurrentUser,
       setParticipants,
       addParticipant,

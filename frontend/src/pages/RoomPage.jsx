@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import RoomHeader from '../components/room/RoomHeader'
 import VideoPlayer from '../components/room/VideoPlayer'
+import QueueInput from '../components/room/QueueInput'
 import Sidebar from '../components/room/Sidebar'
 import ConnectionBanner from '../components/room/ConnectionBanner'
 import { useRoomContext } from '../context/RoomContext'
@@ -32,6 +33,7 @@ export default function RoomPage() {
     setParticipants, setVideoState, addParticipant,
     removeParticipant, updateParticipantRole,
     addChatMessage, resetRoom, videoState, participants,
+    setQueue,
   } = useRoomContext()
 
   const { socket, isConnected } = useSocketContext()
@@ -52,7 +54,7 @@ export default function RoomPage() {
     }
 
     validate()
-  }, [roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [roomId, setRoom, room, navigate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redirect to landing page to choose nickname if entering directly without currentUser
   useEffect(() => {
@@ -77,14 +79,19 @@ export default function RoomPage() {
       toast(`${username} left the room`, { icon: '👋' })
     })
 
-    socket.on(EVENTS.SYNC_STATE, ({ participants, videoState: vs, room: r, currentUserRole }) => {
+    socket.on(EVENTS.SYNC_STATE, ({ participants, videoState: vs, room: r, queue, currentUserRole }) => {
       if (participants) setParticipants(participants)
       if (vs) setVideoState(vs)
+      if (queue) setQueue(queue)
       if (r && !room) setRoom(r)
       // Update role from server
       if (currentUserRole && currentUser) {
         setCurrentUser({ ...currentUser, role: currentUserRole })
       }
+    })
+
+    socket.on(EVENTS.QUEUE_SYNC, ({ queue }) => {
+      if (queue) setQueue(queue)
     })
 
     socket.on(EVENTS.PLAY, ({ currentTime }) => {
@@ -141,6 +148,20 @@ export default function RoomPage() {
     }
   }, [socket, roomId, currentUser?.username])
 
+  // Sync room state automatically when tab returns to focus
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && socket && roomId) {
+        socket.emit(EVENTS.SYNC_REQUEST, { roomId })
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [socket, roomId])
+
   return (
     <div className="h-screen w-full overflow-hidden flex flex-col bg-[#131315] text-[#e5e1e4]">
       {/* Fixed top header */}
@@ -156,6 +177,7 @@ export default function RoomPage() {
           </div>
 
           <div className="relative z-10 w-full flex flex-col items-center gap-6 max-w-5xl mx-auto">
+            <QueueInput />
             <VideoPlayer />
 
             {/* Video metadata row */}

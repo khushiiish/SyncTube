@@ -26,6 +26,15 @@ const videoStateSchema = new mongoose.Schema({
   lastUpdated: { type: Date, default: Date.now },
 }, { _id: false })
 
+const queueItemSchema = new mongoose.Schema({
+  videoId:   { type: String, required: true },
+  title:     { type: String, required: true },
+  thumbnail: { type: String, default: '' },
+  duration:  { type: Number, default: 0 },
+  addedBy:   { type: String, required: true },
+  addedAt:   { type: Date, default: Date.now },
+})
+
 const roomSchema = new mongoose.Schema({
   roomId: {
     type: String,
@@ -47,6 +56,7 @@ const roomSchema = new mongoose.Schema({
   },
   participants: [participantSchema],
   videoState:   { type: videoStateSchema, default: () => ({}) },
+  queue:        [queueItemSchema],
 
   // TTL: auto-delete documents 24 hours after creation
   createdAt: { type: Date, default: Date.now, expires: 86400 },

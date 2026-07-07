@@ -89,8 +89,18 @@ export default function VideoControls({ playerRef, isPlayerReady, isSyncedUpdate
   }
 
   const handleFullscreen = () => {
-    const iframe = document.getElementById('yt-player')
-    if (iframe?.requestFullscreen) iframe.requestFullscreen()
+    const container = document.getElementById('player-container')
+    if (!container) return
+
+    if (!document.fullscreenElement) {
+      if (container.requestFullscreen) {
+        container.requestFullscreen()
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      }
+    }
   }
 
   return (

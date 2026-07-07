@@ -138,6 +138,91 @@ async function updateParticipantRole(roomId, targetSocketId, role) {
   return { room, participant }
 }
 
+/**
+ * Add a video to the room's queue.
+ */
+async function addToQueue(roomId, item) {
+  const room = await Room.findOne({ roomId })
+  if (!room) throw new Error('Room not found.')
+
+  room.queue.push(item)
+  await room.save()
+  return room
+}
+
+/**
+ * Remove a video from the room's queue.
+ */
+async function removeFromQueue(roomId, queueItemId) {
+  const room = await Room.findOne({ roomId })
+  if (!room) throw new Error('Room not found.')
+
+  room.queue = room.queue.filter(item => item._id.toString() !== queueItemId)
+  await room.save()
+  return room
+}
+
+/**
+ * Clear all videos from the room's queue.
+ */
+async function clearQueue(roomId) {
+  const room = await Room.findOne({ roomId })
+  if (!room) throw new Error('Room not found.')
+
+  room.queue = []
+  await room.save()
+  return room
+}
+
+/**
+ * Reorder the room's queue.
+ */
+async function reorderQueue(roomId, newOrderIds) {
+  const room = await Room.findOne({ roomId })
+  if (!room) throw new Error('Room not found.')
+
+  const orderedQueue = []
+  newOrderIds.forEach(id => {
+    const item = room.queue.find(q => q._id.toString() === id)
+    if (item) orderedQueue.push(item)
+  })
+
+  // Safety fallback: append any items not in newOrderIds
+  room.queue.forEach(q => {
+    if (!newOrderIds.includes(q._id.toString())) {
+      orderedQueue.push(q)
+    }
+  })
+
+  room.queue = orderedQueue
+  await room.save()
+  return room
+}
+
+/**
+ * Pop the next video from the queue and set it as playing.
+ */
+async function popNextVideo(roomId) {
+  const room = await Room.findOne({ roomId })
+  if (!room) throw new Error('Room not found.')
+
+  if (room.queue.length === 0) {
+    room.videoState.videoId = null
+    room.videoState.title = ''
+    room.videoState.isPlaying = false
+    room.videoState.currentTime = 0
+  } else {
+    const nextVideo = room.queue.shift()
+    room.videoState.videoId = nextVideo.videoId
+    room.videoState.title = nextVideo.title
+    room.videoState.isPlaying = true
+    room.videoState.currentTime = 0
+  }
+
+  await room.save()
+  return room
+}
+
 module.exports = {
   createRoom,
   findRoom,
@@ -145,4 +230,9 @@ module.exports = {
   removeParticipant,
   updateVideoState,
   updateParticipantRole,
+  addToQueue,
+  removeFromQueue,
+  clearQueue,
+  reorderQueue,
+  popNextVideo,
 }

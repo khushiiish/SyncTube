@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Users, MessageSquare, ListVideo, Copy, Check, LogOut, HelpCircle, UserPlus } from 'lucide-react'
 import ParticipantList from './ParticipantList'
 import Chat from './Chat'
+import QueueList from './QueueList'
 import Avatar from '../ui/Avatar'
 import { useRoomContext } from '../../context/RoomContext'
 import { useSocketContext } from '../../context/SocketContext'
@@ -93,14 +94,7 @@ export default function Sidebar() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {activeTab === 'participants' && <ParticipantList />}
         {activeTab === 'chat' && <Chat />}
-        {activeTab === 'queue' && (
-          <div className="flex flex-col items-center justify-center flex-1 gap-3 text-[#e4beba]/40 p-8">
-            <ListVideo className="w-10 h-10" />
-            <p className="font-[Inter,sans-serif] text-[14px] text-center">
-              Queue is empty. Coming soon!
-            </p>
-          </div>
-        )}
+        {activeTab === 'queue' && <QueueList />}
       </div>
 
       {/* Footer Actions */}
