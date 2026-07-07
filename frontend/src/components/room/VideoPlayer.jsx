@@ -11,7 +11,7 @@ import { EVENTS, emitQueueNext, emitSeek, emitPlay, emitPause } from '../../serv
  * VideoPlayer — YouTube IFrame API container.
  */
 export default function VideoPlayer() {
-  const { canControl, videoState, room } = useRoomContext()
+  const { canControl, videoState, room, currentUser } = useRoomContext()
   const { socket } = useSocketContext()
   const playerRef = useRef(null)
   const isSyncedUpdateRef = useRef(false)
