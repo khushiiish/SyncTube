@@ -8,8 +8,7 @@ The user interface implements the **"Synchronous Dark Media System"** design lan
 
 ## 🚀 Live Links & Demos
 
-- **Frontend Deployment (Vercel)**: `https://synctube-watch.vercel.app` *(Placeholder)*
-- **Backend Service (Render)**: `https://synctube-backend.onrender.com` *(Placeholder)*
+- **Live Watch Platform (Vercel)**: [sync-tube-kh.vercel.app](https://sync-tube-kh.vercel.app/)
 
 ---
 
@@ -113,20 +112,25 @@ syncTube/
 
 ---
 
-## 📡 How Real-Time WebSockets Synchronization Works
+## 📡 WebSocket Integration & Architecture Overview
 
-SyncTube uses a bi-directional websocket pipeline to broadcast state changes instantly.
+WebSockets (via Socket.IO) form the real-time spine of SyncTube. While REST endpoints manage persistent entities (such as room creation), WebSockets handle all watch party coordination.
 
 ```
-[Host / Mod Player]          [Socket.IO Server]         [Participant Player]
-       │                              │                          │
-       │─── 1. user action (play) ───►│                          │
-       │    (emits "play")            │                          │
-       │                              │─── 2. validate role ────►│ [Skip validation]
-       │                              │    (broadcasts "play")   │
-       │                              │                          │─── 3. sets player state
-       │                              │                          │    (plays video)
+[Client (Host)]             [Socket.IO Server]             [Client (Viewer)]
+     │                              │                              │
+     │─── 1. play action ──────────►│                              │
+     │    (emits "play")            │                              │
+     │                              │─── 2. validate role ────────►│
+     │                              │    (broadcasts "play")       │
+     │                              │                              │─── 3. plays video
 ```
+
+### WebSocket Integration Flow
+1. **Connection Lifecycle**: Upon entering a room, the client establishes a persistent connection managed by the `SocketContext` provider, emitting `join_room` to register its `socketId` and fetch the catch-up payload (`sync_state`).
+2. **Action Broadcasts**: When a Host or Moderator plays, pauses, or seeks, the action is sent to the server. The server verifies their credentials and broadcasts the command to all participant sockets in that room.
+3. **Heartbeat Alignment**: The Host client emits a periodic position heartbeat (`seek`) every 5 seconds. Viewers verify their own elapsed time against this heartbeat and auto-correct if they drift by more than 2 seconds.
+4. **Real-Time Dashboard Updates**: Every join, leave, or delete event triggers a global `'rooms_updated'` socket broadcast, allowing the active rooms dashboard to automatically refresh without manual page reloads.
 
 ### 1. Zero-Jitter / Anti-Feedback Loop Pattern
 A common problem in socket-synced players is the **infinite feedback loop**:
