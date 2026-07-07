@@ -54,9 +54,16 @@ export default function RoomPage() {
     validate()
   }, [roomId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Subscribe to all socket events
+  // Redirect to landing page to choose nickname if entering directly without currentUser
   useEffect(() => {
-    if (!socket || !roomId) return
+    if (!currentUser) {
+      navigate('/', { state: { joinRoomId: roomId } })
+    }
+  }, [currentUser, roomId, navigate])
+
+  // Subscribe to all socket events and manage connection/reconnection flow
+  useEffect(() => {
+    if (!socket || !roomId || !currentUser?.username) return
 
     socket.on(EVENTS.USER_JOINED, ({ participant }) => {
       addParticipant(participant)
@@ -99,7 +106,7 @@ export default function RoomPage() {
 
     socket.on(EVENTS.ROLE_UPDATED, ({ socketId, role, username }) => {
       updateParticipantRole({ socketId, role })
-      const roleLabel = { host: 'Host', moderator: 'Moderator', participant: 'Participant' }[role] || role
+      const roleLabel = { host: 'Host', moderator: 'Moderator', participant: 'Participant', viewer: 'Viewer' }[role] || role
       toast(`${username} is now ${roleLabel}`, { icon: '🔄' })
     })
 
@@ -117,10 +124,22 @@ export default function RoomPage() {
       toast.error(message || 'An error occurred')
     })
 
+    // Consolidate join/rejoin logic to prevent race conditions & handle reconnection
+    const handleJoin = () => {
+      socket.emit(EVENTS.JOIN_ROOM, { roomId, username: currentUser.username })
+    }
+
+    if (socket.connected) {
+      handleJoin()
+    }
+
+    socket.on('connect', handleJoin)
+
     return () => {
       Object.values(EVENTS).forEach(event => socket.off(event))
+      socket.off('connect', handleJoin)
     }
-  }, [socket, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, roomId, currentUser?.username])
 
   return (
     <div className="h-screen w-full overflow-hidden flex flex-col bg-[#131315] text-[#e5e1e4]">

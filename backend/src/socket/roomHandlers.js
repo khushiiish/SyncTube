@@ -117,7 +117,7 @@ function registerRoomHandlers(socket, io) {
   })
 
   /* -------------------------------------------------------
-   * play — requires host, moderator, or participant
+   * play — requires host or moderator
    * -------------------------------------------------------
    */
   socket.on(EVENTS.PLAY, async ({ roomId, currentTime }) => {
@@ -129,8 +129,8 @@ function registerRoomHandlers(socket, io) {
       if (!room) return
 
       // Server-side permission check
-      if (!room.hasRole(socket.id, ['host', 'moderator', 'participant'])) {
-        socket.emit(EVENTS.ERROR, { message: 'Only the host, moderator, or participant can control playback.' })
+      if (!room.hasRole(socket.id, ['host', 'moderator'])) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host or moderator can control playback.' })
         return
       }
 
@@ -142,7 +142,7 @@ function registerRoomHandlers(socket, io) {
   })
 
   /* -------------------------------------------------------
-   * pause — requires host, moderator, or participant
+   * pause — requires host or moderator
    * -------------------------------------------------------
    */
   socket.on(EVENTS.PAUSE, async ({ roomId, currentTime }) => {
@@ -153,8 +153,8 @@ function registerRoomHandlers(socket, io) {
       })
       if (!room) return
 
-      if (!room.hasRole(socket.id, ['host', 'moderator', 'participant'])) {
-        socket.emit(EVENTS.ERROR, { message: 'Only the host, moderator, or participant can control playback.' })
+      if (!room.hasRole(socket.id, ['host', 'moderator'])) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host or moderator can control playback.' })
         return
       }
 
@@ -165,7 +165,7 @@ function registerRoomHandlers(socket, io) {
   })
 
   /* -------------------------------------------------------
-   * seek — requires host, moderator, or participant
+   * seek — requires host or moderator
    * -------------------------------------------------------
    */
   socket.on(EVENTS.SEEK, async ({ roomId, currentTime }) => {
@@ -173,8 +173,8 @@ function registerRoomHandlers(socket, io) {
       const room = await roomService.updateVideoState(roomId, { currentTime })
       if (!room) return
 
-      if (!room.hasRole(socket.id, ['host', 'moderator', 'participant'])) {
-        socket.emit(EVENTS.ERROR, { message: 'Only the host, moderator, or participant can seek.' })
+      if (!room.hasRole(socket.id, ['host', 'moderator'])) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host or moderator can seek.' })
         return
       }
 
@@ -185,7 +185,7 @@ function registerRoomHandlers(socket, io) {
   })
 
   /* -------------------------------------------------------
-   * change_video — requires host only
+   * change_video — requires host or moderator
    * -------------------------------------------------------
    */
   socket.on(EVENTS.CHANGE_VIDEO, async ({ roomId, videoId, title }) => {
@@ -198,8 +198,8 @@ function registerRoomHandlers(socket, io) {
       })
       if (!room) return
 
-      if (!room.hasRole(socket.id, 'host')) {
-        socket.emit(EVENTS.ERROR, { message: 'Only the host can change the video.' })
+      if (!room.hasRole(socket.id, ['host', 'moderator'])) {
+        socket.emit(EVENTS.ERROR, { message: 'Only the host or moderator can change the video.' })
         return
       }
 
@@ -215,7 +215,7 @@ function registerRoomHandlers(socket, io) {
    */
   socket.on(EVENTS.ASSIGN_ROLE, async ({ roomId, targetSocketId, role }) => {
     try {
-      const validRoles = ['moderator', 'participant']
+      const validRoles = ['moderator', 'participant', 'viewer']
       if (!validRoles.includes(role)) {
         socket.emit(EVENTS.ERROR, { message: 'Invalid role.' })
         return

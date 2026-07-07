@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, UserMinus, Crown } from 'lucide-react'
+import { Shield, Eye, User, UserMinus, Crown } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import Badge from '../ui/Badge'
 import { useRoomContext } from '../../context/RoomContext'
@@ -18,11 +18,12 @@ export default function ParticipantCard({ participant }) {
   const isMe = participant.socketId === currentUser?.socketId
   const canManage = isHost && !isMe && participant.role !== 'host'
 
-  const handleMakeModerator = () => {
+  const handleAssignRole = (newRole) => {
+    if (participant.role === newRole) return
     emitAssignRole(socket, {
       roomId: room.roomId,
       targetSocketId: participant.socketId,
-      role: participant.role === 'moderator' ? 'participant' : 'moderator',
+      role: newRole,
     })
   }
 
@@ -95,29 +96,64 @@ export default function ParticipantCard({ participant }) {
       {/* Host action menu — appears on hover for other participants */}
       {canManage && (
         <div className="hidden group-hover:flex items-center gap-1 bg-[#2a2a2c] rounded-lg p-1 shadow-md border border-[#5b403e]/20 z-20">
-          {/* Make/Remove Moderator */}
+          {/* Assign Moderator */}
           <button
-            onClick={handleMakeModerator}
-            className="p-1.5 rounded hover:bg-[#353437] text-[#e4beba] hover:text-[#d0bcff] transition-colors"
-            title={participant.role === 'moderator' ? 'Remove Moderator' : 'Make Moderator'}
+            onClick={() => handleAssignRole('moderator')}
+            className={`p-1.5 rounded transition-colors ${
+              participant.role === 'moderator'
+                ? 'bg-[#571bc1]/30 text-[#d0bcff]'
+                : 'hover:bg-[#353437] text-[#e4beba] hover:text-[#d0bcff]'
+            }`}
+            title="Set as Moderator"
           >
-            <Star className="w-4 h-4" />
+            <Shield className="w-4.5 h-4.5" />
           </button>
+
+          {/* Assign Participant */}
+          <button
+            onClick={() => handleAssignRole('participant')}
+            className={`p-1.5 rounded transition-colors ${
+              participant.role === 'participant'
+                ? 'bg-[#353437]/80 text-[#e4beba] border border-[#5b403e]/30'
+                : 'hover:bg-[#353437] text-[#e4beba] hover:text-[#ffb3ad]'
+            }`}
+            title="Set as Participant"
+          >
+            <User className="w-4.5 h-4.5" />
+          </button>
+
+          {/* Assign Viewer */}
+          <button
+            onClick={() => handleAssignRole('viewer')}
+            className={`p-1.5 rounded transition-colors ${
+              participant.role === 'viewer'
+                ? 'bg-[#005f73]/30 text-[#94d2bd]'
+                : 'hover:bg-[#353437] text-[#e4beba] hover:text-[#94d2bd]'
+            }`}
+            title="Set as Viewer"
+          >
+            <Eye className="w-4.5 h-4.5" />
+          </button>
+
+          {/* Spacer */}
+          <div className="w-[1px] h-4 bg-[#5b403e]/30 mx-1" />
+
           {/* Transfer Host */}
           <button
             onClick={handleTransferHost}
             className="p-1.5 rounded hover:bg-[#353437] text-[#e4beba] hover:text-[#ffb3ad] transition-colors"
             title="Transfer Host"
           >
-            <Crown className="w-4 h-4" />
+            <Crown className="w-4.5 h-4.5" />
           </button>
+
           {/* Remove */}
           <button
             onClick={handleRemove}
             className="p-1.5 rounded hover:bg-[#353437] text-[#e4beba] hover:text-[#ffb4ab] transition-colors"
             title="Remove from room"
           >
-            <UserMinus className="w-4 h-4" />
+            <UserMinus className="w-4.5 h-4.5" />
           </button>
         </div>
       )}

@@ -87,7 +87,7 @@ export function RoomProvider({ children }) {
 
   const isHost = state.currentUser?.role === 'host'
   const isModerator = state.currentUser?.role === 'moderator'
-  const canControl = isHost || isModerator || state.currentUser?.role === 'participant'
+  const canControl = isHost || isModerator
 
   const setRoom = useCallback((room) => dispatch({ type: 'SET_ROOM', payload: room }), [])
   const setCurrentUser = useCallback((user) => dispatch({ type: 'SET_CURRENT_USER', payload: user }), [])

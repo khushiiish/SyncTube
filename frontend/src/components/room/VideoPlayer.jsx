@@ -16,7 +16,7 @@ import { useRoomContext } from '../../context/RoomContext'
  * We pass playerRef and isSyncedUpdateRef down to VideoControls.
  */
 export default function VideoPlayer() {
-  const { videoState } = useRoomContext()
+  const { canControl, videoState } = useRoomContext()
   const playerRef = useRef(null)
   const isSyncedUpdateRef = useRef(false)
   const isReadyRef = useRef(false)
@@ -126,8 +126,13 @@ export default function VideoPlayer() {
             {/* YouTube IFrame target */}
             <div id="yt-player" className="w-full h-full" />
 
+            {/* Click blocker for non-controllers to prevent desync */}
+            {!canControl && (
+              <div className="absolute inset-0 z-10 bg-transparent cursor-default" />
+            )}
+
             {/* Controls overlay */}
-            <div className={`absolute inset-0 transition-opacity duration-300 ${showControls || !videoState.isPlaying ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`absolute inset-0 z-20 transition-opacity duration-300 ${showControls || !videoState.isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
               <VideoControls
                 playerRef={playerRef}
                 isPlayerReady={isPlayerReady}

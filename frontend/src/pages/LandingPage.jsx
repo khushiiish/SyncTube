@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
@@ -14,22 +14,10 @@ import { emitJoinRoom } from '../services/socketService'
 
 /**
  * LandingPage — orchestrates modals and room creation/joining flow.
- *
- * Flow:
- * 1. User clicks "Create Watch Party" → CreateRoomModal opens
- * 2. User submits → POST /api/rooms/create → get roomId
- * 3. Socket emits join_room
- * 4. Navigate to /room/:roomId
- *
- * Join flow:
- * 1. User enters room code in hero input or clicks "Join Room"
- * 2. JoinRoomModal opens (optionally prefilled)
- * 3. User submits → POST /api/rooms/join (validates room exists)
- * 4. Socket emits join_room
- * 5. Navigate to /room/:roomId
  */
 export default function LandingPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { setRoom, setCurrentUser } = useRoomContext()
   const { socket } = useSocketContext()
 
@@ -44,6 +32,13 @@ export default function LandingPage() {
     setShowJoin(true)
   }
 
+  useEffect(() => {
+    if (location.state?.joinRoomId) {
+      openJoin(location.state.joinRoomId)
+      window.history.replaceState({}, document.title)
+    }
+  }, [location])
+
   const handleCreateRoom = async ({ username, roomName }) => {
     setIsLoadingCreate(true)
     try {
@@ -53,11 +48,6 @@ export default function LandingPage() {
       // Store in context
       setRoom(room)
       setCurrentUser({ username, role: 'host', socketId: socket?.id })
-
-      // Join socket room
-      if (socket) {
-        emitJoinRoom(socket, { roomId: room.roomId, username })
-      }
 
       toast.success(`Room "${room.roomName}" created!`)
       navigate(`/room/${room.roomId}`)
@@ -77,10 +67,6 @@ export default function LandingPage() {
 
       setRoom(room)
       setCurrentUser({ username, role: 'participant', socketId: socket?.id })
-
-      if (socket) {
-        emitJoinRoom(socket, { roomId: room.roomId, username })
-      }
 
       toast.success(`Joined "${room.roomName}"!`)
       navigate(`/room/${room.roomId}`)

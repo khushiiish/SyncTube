@@ -11,8 +11,8 @@ export default function ParticipantList() {
   const { participants } = useRoomContext()
 
   const sorted = [...participants].sort((a, b) => {
-    const order = { host: 0, moderator: 1, participant: 2 }
-    return (order[a.role] ?? 3) - (order[b.role] ?? 3)
+    const order = { host: 0, moderator: 1, participant: 2, viewer: 3 }
+    return (order[a.role] ?? 4) - (order[b.role] ?? 4)
   })
 
   return (

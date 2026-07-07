@@ -13,7 +13,7 @@ const mongoose = require('mongoose')
 const participantSchema = new mongoose.Schema({
   socketId:  { type: String, required: true },
   username:  { type: String, required: true, trim: true },
-  role:      { type: String, enum: ['host', 'moderator', 'participant'], default: 'participant' },
+  role:      { type: String, enum: ['host', 'moderator', 'participant', 'viewer'], default: 'participant' },
   joinedAt:  { type: Date, default: Date.now },
   status:    { type: String, enum: ['online', 'buffering', 'offline'], default: 'online' },
 }, { _id: false })
