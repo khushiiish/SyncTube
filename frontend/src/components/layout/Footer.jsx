@@ -12,15 +12,20 @@ export default function Footer() {
         </span>
       </div>
       <div className="flex flex-wrap justify-center gap-4 md:gap-6">
-        {['Terms', 'Privacy', 'Tech Stack', 'Twitter', 'GitHub'].map(link => (
-          <a
-            key={link}
-            href="#"
-            className="text-[14px] text-[#e4beba] hover:text-[#ffb3ad] transition-colors opacity-80 hover:opacity-100"
-          >
-            {link}
-          </a>
-        ))}
+        {['Terms', 'Privacy', 'Tech Stack', 'Twitter', 'GitHub'].map(link => {
+          const isGitHub = link === 'GitHub'
+          return (
+            <a
+              key={link}
+              href={isGitHub ? "https://github.com/khushiiish/SyncTube" : "#"}
+              target={isGitHub ? "_blank" : undefined}
+              rel={isGitHub ? "noopener noreferrer" : undefined}
+              className="text-[14px] text-[#e4beba] hover:text-[#ffb3ad] transition-colors opacity-80 hover:opacity-100"
+            >
+              {link}
+            </a>
+          )
+        })}
       </div>
     </footer>
   )

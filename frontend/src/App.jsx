@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast'
 import { SocketProvider } from './context/SocketContext'
 import { RoomProvider } from './context/RoomContext'
 import LandingPage from './pages/LandingPage'
+import RoomsPage from './pages/RoomsPage'
 import RoomPage from './pages/RoomPage'
 
 /**
@@ -17,6 +18,7 @@ export default function App() {
         <RoomProvider>
           <Routes>
             <Route path="/" element={<LandingPage />} />
+            <Route path="/rooms" element={<RoomsPage />} />
             <Route path="/room/:roomId" element={<RoomPage />} />
           </Routes>
 

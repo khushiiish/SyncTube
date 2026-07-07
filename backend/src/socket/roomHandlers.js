@@ -84,6 +84,7 @@ function registerRoomHandlers(socket, io) {
 
       // Notify others
       socket.to(roomId).emit(EVENTS.USER_JOINED, { participant })
+      io.emit('rooms_updated')
 
       // Send full state to the new joiner
       socket.emit(EVENTS.SYNC_STATE, {
@@ -534,6 +535,7 @@ async function handleLeave(socket, io, roomId) {
     }
 
     console.log(`[Socket] ${socket.username || socket.id} left room ${roomId}`)
+    io.emit('rooms_updated')
   } catch (err) {
     console.error('[Socket] handleLeave error:', err.message)
   }

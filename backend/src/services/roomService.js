@@ -223,6 +223,20 @@ async function popNextVideo(roomId) {
   return room
 }
 
+/**
+ * Get all active rooms.
+ */
+async function getAllRooms() {
+  return await Room.find({})
+}
+
+/**
+ * Delete a room by roomId.
+ */
+async function deleteRoom(roomId) {
+  return await Room.deleteOne({ roomId })
+}
+
 module.exports = {
   createRoom,
   findRoom,
@@ -235,4 +249,6 @@ module.exports = {
   clearQueue,
   reorderQueue,
   popNextVideo,
+  getAllRooms,
+  deleteRoom,
 }

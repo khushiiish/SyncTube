@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Copy, Check } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import useCopyToClipboard from '../../hooks/useCopyToClipboard'
 
 /**
@@ -24,10 +25,10 @@ export default function Navbar({ onCreateRoom, onJoinRoom }) {
         <a href="#features" className="text-[14px] font-medium text-[#e4beba] hover:text-[#ffb3ad] transition-colors duration-200">
           Features
         </a>
-        <a href="#" className="text-[14px] font-medium text-[#e4beba] hover:text-[#ffb3ad] transition-colors duration-200">
+        <Link to="/rooms" className="text-[14px] font-medium text-[#e4beba] hover:text-[#ffb3ad] transition-colors duration-200">
           Rooms
-        </a>
-        <a href="#" className="text-[14px] font-medium text-[#e4beba] hover:text-[#ffb3ad] transition-colors duration-200">
+        </Link>
+        <a href="https://github.com/khushiiish/SyncTube" target="_blank" rel="noopener noreferrer" className="text-[14px] font-medium text-[#e4beba] hover:text-[#ffb3ad] transition-colors duration-200">
           GitHub
         </a>
       </div>

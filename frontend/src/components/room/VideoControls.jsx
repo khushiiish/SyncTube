@@ -104,7 +104,7 @@ export default function VideoControls({ playerRef, isPlayerReady, isSyncedUpdate
   }
 
   return (
-    <div className="absolute bottom-0 left-0 w-full px-4 pb-4 pt-16 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end">
+    <div className="absolute bottom-0 left-0 w-full px-4 pb-4 pt-16 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end pointer-events-auto">
       {/* Progress Bar */}
       <div
         ref={progressRef}

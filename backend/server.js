@@ -61,7 +61,8 @@ function start() {
   connectDB()
 
   // Initialize Socket.IO server immediately
-  initSocket(httpServer)
+  const io = initSocket(httpServer)
+  app.set('io', io)
 
   const PORT = process.env.PORT || 5000
   httpServer.listen(PORT, () => {

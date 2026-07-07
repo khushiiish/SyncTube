@@ -44,4 +44,16 @@ export const joinRoom = (data) => api.post('/rooms/join', data)
  */
 export const getRoom = (roomId) => api.get(`/rooms/${roomId}`)
 
+/**
+ * Fetch all active rooms.
+ */
+export const getRooms = () => api.get('/rooms')
+
+/**
+ * Delete a room (only by host).
+ * @param {string} roomId
+ * @param {string} socketId
+ */
+export const deleteRoom = (roomId, socketId) => api.delete(`/rooms/${roomId}`, { data: { socketId } })
+
 export default api

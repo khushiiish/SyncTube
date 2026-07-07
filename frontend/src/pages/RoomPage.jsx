@@ -170,13 +170,13 @@ export default function RoomPage() {
       {/* Main content area — below fixed header */}
       <main className="flex-1 flex pt-[72px] h-full overflow-hidden">
         {/* Video Canvas — left 70% */}
-        <section className="flex-1 relative flex flex-col items-center justify-center p-4 lg:p-6 bg-[#0e0e10] overflow-hidden">
+        <section className="flex-1 relative flex flex-col items-center p-4 lg:p-6 bg-[#0e0e10] overflow-y-auto scrollbar-thin">
           {/* Ambient background glow */}
           <div className="absolute inset-0 z-0 flex items-center justify-center opacity-20 pointer-events-none">
             <div className="w-3/4 h-3/4 bg-[#ffb3ad]/10 rounded-full blur-[160px]" />
           </div>
 
-          <div className="relative z-10 w-full flex flex-col items-center gap-6 max-w-5xl mx-auto">
+          <div className="relative z-10 w-full flex flex-col items-center gap-6 max-w-5xl mx-auto my-auto py-4">
             <QueueInput />
             <VideoPlayer />
 

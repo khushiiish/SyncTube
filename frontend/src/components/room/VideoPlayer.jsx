@@ -268,7 +268,7 @@ export default function VideoPlayer() {
             )}
 
             {/* Controls overlay */}
-            <div className={`absolute inset-0 z-20 transition-opacity duration-300 ${showControls || !videoState.isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <div className={`absolute inset-0 z-20 transition-opacity duration-300 pointer-events-none ${showControls || !videoState.isPlaying ? 'opacity-100' : 'opacity-0'}`}>
               <VideoControls
                 playerRef={playerRef}
                 isPlayerReady={isPlayerReady}
