@@ -84,9 +84,13 @@ export default function RoomPage() {
       if (vs) setVideoState(vs)
       if (queue) setQueue(queue)
       if (r && !room) setRoom(r)
-      // Update role from server
-      if (currentUserRole && currentUser) {
-        setCurrentUser({ ...currentUser, role: currentUserRole })
+      // Update role & socketId from server
+      if (currentUser) {
+        setCurrentUser({
+          ...currentUser,
+          socketId: socket.id,
+          role: currentUserRole || currentUser.role,
+        })
       }
     })
 
