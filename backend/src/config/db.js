@@ -1,20 +1,37 @@
 const dns = require('dns')
 const mongoose = require('mongoose')
 
-// Resolve querySrv issues with MongoDB Atlas by setting public DNS servers
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1'])
-} catch (e) {
-  console.warn('[DB] Failed to set custom DNS servers:', e.message)
+// Only override DNS servers in local development if needed; in cloud production (Render),
+// use the host's native resolver to ensure proper SRV lookup and TLS SNI negotiation.
+if (process.env.NODE_ENV !== 'production' && process.env.CUSTOM_DNS !== 'false') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1'])
+  } catch (e) {
+    // Ignore custom DNS fallback
+  }
 }
 
 let memoryServerInstance = null
 let isConnecting = false
+let retryTimer = null
+
+// Register connection lifecycle listeners ONCE at module load to prevent EventEmitter memory leaks
+mongoose.connection.on('disconnected', () => {
+  console.warn('[DB] MongoDB disconnected.')
+})
+
+mongoose.connection.on('reconnected', () => {
+  console.info('[DB] MongoDB reconnected successfully.')
+})
+
+mongoose.connection.on('error', (err) => {
+  console.error('[DB] Mongoose connection error:', err.message)
+})
 
 /**
  * Mongoose connection manager.
  * Supports:
- * 1. Direct connection to MongoDB Atlas / remote cluster
+ * 1. Direct connection to MongoDB Atlas / remote cluster with IPv4 enforcement & proper timeouts
  * 2. Connection to local MongoDB daemon (port 27017)
  * 3. Automatic in-memory MongoDB fallback for local development if local daemon is offline
  */
@@ -24,38 +41,32 @@ async function connectDB() {
   }
 
   isConnecting = true
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+
   const rawUri = process.env.MONGODB_URI
   const isLocalUri = !rawUri || rawUri.includes('localhost') || rawUri.includes('127.0.0.1')
   const isDev = process.env.NODE_ENV !== 'production'
-
-  mongoose.connection.on('disconnected', () => {
-    console.warn('[DB] MongoDB disconnected.')
-  })
-
-  mongoose.connection.on('reconnected', () => {
-    console.info('[DB] MongoDB reconnected.')
-  })
-
-  mongoose.connection.on('error', (err) => {
-    console.error('[DB] Mongoose connection error:', err.message)
-  })
 
   // 1. If remote URI (e.g. MongoDB Atlas), connect directly
   if (rawUri && !isLocalUri) {
     try {
       await mongoose.connect(rawUri, {
-        serverSelectionTimeoutMS: 8000,
-        connectTimeoutMS: 10000,
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 15000,
+        socketTimeoutMS: 45000,
+        family: 4, // Force IPv4 to prevent cloud container IPv6 handshake failures
       })
-      console.log(`[DB] MongoDB Atlas connected: ${mongoose.connection.host}`)
+      console.log(`[DB] MongoDB Atlas connected successfully: ${mongoose.connection.host}`)
       isConnecting = false
       return
     } catch (err) {
       isConnecting = false
       console.error('[DB] Remote MongoDB Atlas connection failed:', err.message)
-      console.log('[DB] Make sure your IP (0.0.0.0/0) is whitelisted in MongoDB Atlas Network Access.')
-      console.log('[DB] Will retry connection in 10 seconds...')
-      setTimeout(connectDB, 10000)
+      console.error('[DB] CRITICAL: Ensure 0.0.0.0/0 (Allow Access from Anywhere) is active in MongoDB Atlas -> Network Access.')
+      retryTimer = setTimeout(connectDB, 10000)
       return
     }
   }
@@ -65,6 +76,7 @@ async function connectDB() {
     try {
       await mongoose.connect(rawUri, {
         serverSelectionTimeoutMS: 2000,
+        family: 4,
       })
       console.log(`[DB] Local MongoDB connected: ${mongoose.connection.host}`)
       isConnecting = false
@@ -83,7 +95,7 @@ async function connectDB() {
       memoryServerInstance = await MongoMemoryServer.create()
       const memUri = memoryServerInstance.getUri()
 
-      await mongoose.connect(memUri)
+      await mongoose.connect(memUri, { family: 4 })
       console.log(`[DB] In-memory MongoDB connected successfully: ${mongoose.connection.host}`)
       console.log('[DB] (Rooms, queues, and chat are now active)')
       isConnecting = false
@@ -110,8 +122,7 @@ async function connectDB() {
   }
 
   isConnecting = false
-  console.log('[DB] Will re-attempt database connection in 10 seconds...')
-  setTimeout(connectDB, 10000)
+  retryTimer = setTimeout(connectDB, 10000)
 }
 
 // Graceful cleanup on process termination
