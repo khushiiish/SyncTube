@@ -5,8 +5,11 @@ import { formatAudioDuration } from '../../utils/audioFormat'
 /**
  * VoiceMessageBubble — In-room audio player bubble for voice chat messages.
  *
- * Designed with a sleek sound-wave visualization, play/pause controls,
- * interactive scrubber, and duration timestamps.
+ * Features:
+ * - Sleek sound-wave visualization and interactive scrubber
+ * - Audio mutual exclusion (pauses any other playing audio in the room)
+ * - Safe play/pause state synchronization
+ * - Accurate duration timestamps
  */
 export default function VoiceMessageBubble({ message, isMe }) {
   const [isPlaying, setIsPlaying] = useState(false)
@@ -17,8 +20,9 @@ export default function VoiceMessageBubble({ message, isMe }) {
   const audioData = message?.audio || {}
   const totalDuration = audioData.duration || 0
   const audioUrl = audioData.url
+  const msgId = message?.messageId || message?.id || message?._id || 'msg_bubble'
 
-  // Play / Pause toggle
+  // Play / Pause toggle with mutual exclusion
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current || !audioUrl) return
 
@@ -26,6 +30,8 @@ export default function VoiceMessageBubble({ message, isMe }) {
       audioRef.current.pause()
       setIsPlaying(false)
     } else {
+      // Pause any other voice messages or preview currently playing
+      window.dispatchEvent(new CustomEvent('synctube:pause_audio', { detail: { id: msgId } }))
       audioRef.current.play().then(() => {
         setIsPlaying(true)
       }).catch(err => {
@@ -34,7 +40,19 @@ export default function VoiceMessageBubble({ message, isMe }) {
         setIsPlaying(false)
       })
     }
-  }, [isPlaying, audioUrl])
+  }, [isPlaying, audioUrl, msgId])
+
+  // Listen for global pause audio events from other message bubbles
+  useEffect(() => {
+    const handlePauseOthers = (e) => {
+      if (e.detail?.id !== msgId && audioRef.current) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      }
+    }
+    window.addEventListener('synctube:pause_audio', handlePauseOthers)
+    return () => window.removeEventListener('synctube:pause_audio', handlePauseOthers)
+  }, [msgId])
 
   // Audio event listeners
   useEffect(() => {
@@ -155,7 +173,7 @@ export default function VoiceMessageBubble({ message, isMe }) {
                   className={`
                     w-1 rounded-full transition-colors
                     ${isFilled
-                      ? (isMe ? 'bg-[#ffb3ad]' : 'bg-[#ffb3ad]')
+                      ? 'bg-[#ffb3ad]'
                       : 'bg-[#3b3a3e]'
                     }
                   `}
@@ -167,7 +185,7 @@ export default function VoiceMessageBubble({ message, isMe }) {
           {/* Progress bar line */}
           <div className="w-full h-1 bg-[#27272A] rounded-full overflow-hidden relative">
             <div
-              className={`h-full transition-[width] duration-100 ${isMe ? 'bg-[#ffb3ad]' : 'bg-[#ffb3ad]'}`}
+              className="h-full transition-[width] duration-100 bg-[#ffb3ad]"
               style={{ width: `${progressPercent}%` }}
             />
           </div>

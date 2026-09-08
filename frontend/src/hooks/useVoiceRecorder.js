@@ -4,15 +4,22 @@ import { getSupportedAudioMimeType } from '../utils/audioFormat'
 /**
  * useVoiceRecorder — Custom hook managing browser audio capture via MediaRecorder API.
  *
+ * States:
+ * - 'idle': Not recording, mic inactive
+ * - 'requesting': Awaiting getUserMedia microphone permission / hardware connection
+ * - 'recording': Active audio capture with live timer
+ * - 'preview': Recording stopped, audio Blob ready for playback or send
+ *
  * Features:
- * - Direct microphone stream acquisition with noise suppression
- * - Dynamic browser MIME type negotiation
+ * - Direct microphone stream acquisition with noise suppression & echo cancellation
+ * - Session tracking preventing concurrency deadlocks and duplicate streams
+ * - Immediate hardware track termination on stop or cancel (no mic indicator lingering)
+ * - Single-blob container capture (avoids timeslice chunk duplication/stutter)
  * - 60-second automatic recording stop limit
- * - In-memory Blob preview creation
- * - Guaranteed stream track cleanup on cancel or unmount to turn off browser mic indicator
+ * - In-memory Blob preview creation and optional instant-send onStop callback
  */
 export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
-  const [status, setStatus] = useState('idle') // 'idle' | 'recording' | 'preview'
+  const [status, setStatus] = useState('idle') // 'idle' | 'requesting' | 'recording' | 'preview'
   const [duration, setDuration] = useState(0)
   const [audioBlob, setAudioBlob] = useState(null)
   const [audioUrl, setAudioUrl] = useState(null)
@@ -24,8 +31,10 @@ export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
   const timerRef = useRef(null)
   const chunksRef = useRef([])
   const previewUrlRef = useRef(null)
+  const sessionIdRef = useRef(0)
+  const onStopCallbackRef = useRef(null)
 
-  // Track release helper
+  // Track release helper — synchronously stops all microphone tracks
   const cleanupStream = useCallback(() => {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => {
@@ -61,33 +70,70 @@ export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
 
   /**
    * Stop active recording and finalize audio Blob.
+   * Immediately stops hardware microphone tracks so the mic is released on the spot.
    */
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback((onStopCallback = null) => {
     clearRecordingTimer()
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+    if (typeof onStopCallback === 'function') {
+      onStopCallbackRef.current = onStopCallback
+    }
+
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
       try {
-        mediaRecorderRef.current.stop()
+        recorder.stop()
       } catch (err) {
         console.warn('[VoiceRecorder] Error stopping MediaRecorder:', err.message)
       }
     }
-  }, [clearRecordingTimer])
+
+    // Immediately stop hardware mic stream tracks to release microphone hardware synchronously
+    cleanupStream()
+  }, [clearRecordingTimer, cleanupStream])
 
   /**
    * Start microphone capture and MediaRecorder.
+   * Increments session ID to cancel any in-flight previous requests and avoids concurrency locks.
    */
   const startRecording = useCallback(async () => {
+    // If already actively recording in this session, do not restart
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      return false
+    }
+
+    const currentSessionId = ++sessionIdRef.current
+
+    setStatus('requesting')
     setError(null)
     cleanupPreviewUrl()
     cleanupStream()
     clearRecordingTimer()
 
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.onstop = null
+        mediaRecorderRef.current.ondataavailable = null
+        mediaRecorderRef.current.stop()
+      } catch {
+        // Ignore
+      }
+      mediaRecorderRef.current = null
+    }
+
     if (!navigator?.mediaDevices?.getUserMedia) {
-      setError('Audio recording is not supported in your browser.')
+      if (sessionIdRef.current === currentSessionId) {
+        setError('Audio recording is not supported in your browser.')
+        setStatus('idle')
+      }
       return false
     }
 
     try {
+      // Pause any currently playing voice message in the app
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('synctube:pause_audio', { detail: { id: 'recording' } }))
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -96,23 +142,39 @@ export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
         },
       })
 
+      // If cancelled or superseded by another startRecording while awaiting getUserMedia
+      if (sessionIdRef.current !== currentSessionId) {
+        stream.getTracks().forEach(t => {
+          try { t.stop() } catch {}
+        })
+        return false
+      }
+
       mediaStreamRef.current = stream
       chunksRef.current = []
 
       const chosenMime = getSupportedAudioMimeType()
       setMimeType(chosenMime)
 
-      const options = chosenMime ? { mimeType: chosenMime } : {}
-      const recorder = new MediaRecorder(stream, options)
+      let recorder
+      try {
+        recorder = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream)
+      } catch {
+        recorder = new MediaRecorder(stream)
+      }
       mediaRecorderRef.current = recorder
 
       recorder.ondataavailable = (event) => {
+        if (sessionIdRef.current !== currentSessionId) return
         if (event.data && event.data.size > 0) {
           chunksRef.current.push(event.data)
         }
       }
 
       recorder.onstop = () => {
+        cleanupStream()
+        if (sessionIdRef.current !== currentSessionId) return
+
         const finalBlob = new Blob(chunksRef.current, { type: chosenMime || 'audio/webm' })
         const url = URL.createObjectURL(finalBlob)
         previewUrlRef.current = url
@@ -120,18 +182,25 @@ export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
         setAudioBlob(finalBlob)
         setAudioUrl(url)
         setStatus('preview')
-        cleanupStream()
+
+        if (typeof onStopCallbackRef.current === 'function') {
+          const cb = onStopCallbackRef.current
+          onStopCallbackRef.current = null
+          cb({ audioBlob: finalBlob, audioUrl: url, mimeType: chosenMime || 'audio/webm' })
+        }
       }
 
       recorder.onerror = (evt) => {
         console.error('[VoiceRecorder] MediaRecorder error:', evt.error)
+        if (sessionIdRef.current !== currentSessionId) return
         setError('An error occurred during audio recording.')
         cleanupStream()
         clearRecordingTimer()
         setStatus('idle')
       }
 
-      recorder.start(250) // Emit chunks every 250ms
+      // Record continuously without 250ms timeslice chunks to prevent chunk interleaving and duplicate speech
+      recorder.start()
       setStatus('recording')
       setDuration(0)
 
@@ -147,8 +216,10 @@ export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
 
       return true
     } catch (err) {
-      console.warn('[VoiceRecorder] getUserMedia failed:', err)
       cleanupStream()
+      if (sessionIdRef.current !== currentSessionId) return false
+
+      console.warn('[VoiceRecorder] getUserMedia failed:', err)
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setError('Microphone permission was denied. Please allow microphone access in your browser settings.')
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
@@ -165,11 +236,14 @@ export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
    * Cancel and discard current recording/preview without saving.
    */
   const cancelRecording = useCallback(() => {
+    ++sessionIdRef.current
+    onStopCallbackRef.current = null
     clearRecordingTimer()
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
-        // Remove onstop handler so preview state isn't triggered
         mediaRecorderRef.current.onstop = null
+        mediaRecorderRef.current.ondataavailable = null
         mediaRecorderRef.current.stop()
       } catch {
         // Ignore
@@ -204,9 +278,11 @@ export function useVoiceRecorder({ maxDurationSeconds = 60 } = {}) {
   }, [clearRecordingTimer, cleanupStream, cleanupPreviewUrl])
 
   return {
-    status, // 'idle' | 'recording' | 'preview'
+    status, // 'idle' | 'requesting' | 'recording' | 'preview'
+    isRequesting: status === 'requesting',
     isRecording: status === 'recording',
     isPreview: status === 'preview',
+    isIdle: status === 'idle',
     duration,
     audioBlob,
     audioUrl,
