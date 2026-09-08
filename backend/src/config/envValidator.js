@@ -43,6 +43,8 @@ function validateEnv() {
   const warnings = []
   if (!process.env.MONGODB_URI) {
     warnings.push('MONGODB_URI is not set. Database operations will fail unless memory server or default URI is used.')
+  } else if (process.env.NODE_ENV === 'production' && (process.env.MONGODB_URI.includes('localhost') || process.env.MONGODB_URI.includes('127.0.0.1'))) {
+    warnings.push('MONGODB_URI is set to localhost in production. Render cloud containers cannot reach localhost. Please set MONGODB_URI to your MongoDB Atlas connection string (mongodb+srv://...).')
   }
   if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) {
     warnings.push('CLERK authentication keys are missing. Authenticated endpoints and token verification will fail.')

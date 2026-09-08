@@ -37,21 +37,42 @@ function getTransporter() {
     return null
   }
 
-  const port = parseInt(process.env.SMTP_PORT, 10) || 587
-  const secure = String(process.env.SMTP_SECURE).toLowerCase() === 'true'
+  const host = (process.env.SMTP_HOST || '').toLowerCase()
+  const isGmail = host.includes('gmail')
+  const port = parseInt(process.env.SMTP_PORT, 10) || (isGmail ? 465 : 587)
+  const secure = process.env.SMTP_SECURE !== undefined
+    ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
+    : (port === 465)
 
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    // Hardening: disable arbitrary file or URL attachment fetching
-    disableFileAccess: true,
-    disableUrlAccess: true,
-  })
+  const transportConfig = isGmail
+    ? {
+        service: 'gmail',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+        disableFileAccess: true,
+        disableUrlAccess: true,
+      }
+    : {
+        host: process.env.SMTP_HOST,
+        port,
+        secure,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+        disableFileAccess: true,
+        disableUrlAccess: true,
+      }
+
+  transporter = nodemailer.createTransport(transportConfig)
 
   isConfigured = true
   return transporter

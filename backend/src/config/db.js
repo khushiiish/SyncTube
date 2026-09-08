@@ -44,7 +44,8 @@ async function connectDB() {
   if (rawUri && !isLocalUri) {
     try {
       await mongoose.connect(rawUri, {
-        serverSelectionTimeoutMS: 5000,
+        serverSelectionTimeoutMS: 8000,
+        connectTimeoutMS: 10000,
       })
       console.log(`[DB] MongoDB Atlas connected: ${mongoose.connection.host}`)
       isConnecting = false
@@ -52,13 +53,14 @@ async function connectDB() {
     } catch (err) {
       isConnecting = false
       console.error('[DB] Remote MongoDB Atlas connection failed:', err.message)
-      console.log('[DB] Will retry connection in 5 seconds...')
-      setTimeout(connectDB, 5000)
+      console.log('[DB] Make sure your IP (0.0.0.0/0) is whitelisted in MongoDB Atlas Network Access.')
+      console.log('[DB] Will retry connection in 10 seconds...')
+      setTimeout(connectDB, 10000)
       return
     }
   }
 
-  // 2. If local URI, attempt local connection first
+  // 2. If local URI, attempt local connection
   if (rawUri && isLocalUri) {
     try {
       await mongoose.connect(rawUri, {
@@ -72,27 +74,44 @@ async function connectDB() {
     }
   }
 
-  // 3. If local daemon is offline and in development mode, start in-memory MongoDB
-  if (isDev) {
+  // 3. Fallback: try embedded in-memory MongoDB if in development or explicitly allowed
+  const allowMemoryFallback = isDev || process.env.ALLOW_MEMORY_DB === 'true'
+  if (allowMemoryFallback) {
     try {
-      console.log('[DB] Starting embedded in-memory MongoDB server for local development...')
+      console.log('[DB] Attempting embedded in-memory MongoDB fallback...')
       const { MongoMemoryServer } = require('mongodb-memory-server')
       memoryServerInstance = await MongoMemoryServer.create()
       const memUri = memoryServerInstance.getUri()
 
       await mongoose.connect(memUri)
       console.log(`[DB] In-memory MongoDB connected successfully: ${mongoose.connection.host}`)
-      console.log('[DB] (All watch party rooms, queues, and chat are now active locally)')
-      console.log('[DB] (To connect to persistent cloud storage, set MONGODB_URI=mongodb+srv://... in backend/.env)')
+      console.log('[DB] (Rooms, queues, and chat are now active)')
       isConnecting = false
       return
     } catch (memErr) {
-      console.error('[DB] Failed to start in-memory MongoDB fallback:', memErr.message)
+      console.warn('[DB] In-memory MongoDB fallback unavailable:', memErr.message)
     }
   }
 
+  // 4. If in production with localhost or missing URI, log critical configuration instructions
+  if (!isDev) {
+    console.error('================================================================================')
+    console.error('  [DB CRITICAL ERROR] MongoDB is not connected in PRODUCTION!')
+    console.error(`  Current MONGODB_URI: ${rawUri || '[not set]'}`)
+    if (isLocalUri) {
+      console.error('  Reason: Render/cloud containers do NOT have a local MongoDB service on localhost.')
+      console.error('  Action Required:')
+      console.error('  1. Create a free cluster on MongoDB Atlas (https://cloud.mongodb.com).')
+      console.error('  2. Whitelist 0.0.0.0/0 in MongoDB Atlas -> "Network Access".')
+      console.error('  3. In your Render Dashboard -> Environment Variables:')
+      console.error('     Set MONGODB_URI = mongodb+srv://<username>:<password>@cluster0.xxx.mongodb.net/synctube?retryWrites=true&w=majority')
+    }
+    console.error('================================================================================')
+  }
+
   isConnecting = false
-  console.error('[DB] No database connection available. Please start MongoDB or configure MONGODB_URI.')
+  console.log('[DB] Will re-attempt database connection in 10 seconds...')
+  setTimeout(connectDB, 10000)
 }
 
 // Graceful cleanup on process termination
