@@ -28,9 +28,14 @@ api.interceptors.response.use(
 
 /**
  * Create a new room.
+ * Requires Clerk session Bearer token.
  * @param {{ username: string, roomName: string }} data
+ * @param {string} [token] - Clerk session JWT
  */
-export const createRoom = (data) => api.post('/rooms/create', data)
+export const createRoom = (data, token) => {
+  const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {}
+  return api.post('/rooms/create', data, config)
+}
 
 /**
  * Join an existing room.
@@ -50,10 +55,13 @@ export const getRoom = (roomId) => api.get(`/rooms/${roomId}`)
 export const getRooms = () => api.get('/rooms')
 
 /**
- * Delete a room (only by host).
+ * Delete a room (only by authenticated creator).
  * @param {string} roomId
- * @param {string} socketId
+ * @param {string} [token] - Clerk session JWT
  */
-export const deleteRoom = (roomId, socketId) => api.delete(`/rooms/${roomId}`, { data: { socketId } })
+export const deleteRoom = (roomId, token) => {
+  const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {}
+  return api.delete(`/rooms/${roomId}`, config)
+}
 
 export default api

@@ -1,28 +1,30 @@
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Shield, Eye, User, UserMinus, Crown } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import Badge from '../ui/Badge'
 import { useRoomContext } from '../../context/RoomContext'
 import { useSocketContext } from '../../context/SocketContext'
 import { emitAssignRole, emitRemoveParticipant, emitTransferHost } from '../../services/socketService'
-import { toast } from 'react-hot-toast'
 
 /**
  * ParticipantCard — individual row in the participants list.
- * Matches Stitch participant card design with hover action menu.
+ * Identifies and operates on stable participantId.
  */
 export default function ParticipantCard({ participant }) {
   const { isHost, currentUser, room } = useRoomContext()
   const { socket } = useSocketContext()
 
-  const isMe = participant.socketId === currentUser?.socketId
+  const isMe = participant.participantId
+    ? participant.participantId === currentUser?.participantId
+    : participant.socketId === currentUser?.socketId
+
   const canManage = isHost && !isMe && participant.role !== 'host'
 
   const handleAssignRole = (newRole) => {
     if (participant.role === newRole) return
     emitAssignRole(socket, {
       roomId: room.roomId,
-      targetSocketId: participant.socketId,
+      targetParticipantId: participant.participantId,
       role: newRole,
     })
   }
@@ -31,7 +33,7 @@ export default function ParticipantCard({ participant }) {
     if (!confirm(`Remove ${participant.username} from the room?`)) return
     emitRemoveParticipant(socket, {
       roomId: room.roomId,
-      targetSocketId: participant.socketId,
+      targetParticipantId: participant.participantId,
     })
   }
 
@@ -39,13 +41,15 @@ export default function ParticipantCard({ participant }) {
     if (!confirm(`Transfer host to ${participant.username}?`)) return
     emitTransferHost(socket, {
       roomId: room.roomId,
-      targetSocketId: participant.socketId,
+      targetParticipantId: participant.participantId,
     })
   }
 
   const statusMap = {
     online: 'online',
     buffering: 'buffering',
+    reconnecting: 'offline',
+    offline: 'offline',
   }
 
   return (
@@ -87,9 +91,17 @@ export default function ParticipantCard({ participant }) {
           <Badge role={participant.role} />
         </div>
         <span className={`font-[Geist,sans-serif] text-[12px] ${
-          participant.status === 'buffering' ? 'text-yellow-400' : 'text-[#e4beba]'
+          participant.status === 'buffering'
+            ? 'text-yellow-400'
+            : participant.status === 'reconnecting'
+              ? 'text-orange-400'
+              : 'text-[#e4beba]'
         }`}>
-          {participant.status === 'buffering' ? 'Buffering...' : 'Synced'}
+          {participant.status === 'buffering'
+            ? 'Buffering...'
+            : participant.status === 'reconnecting'
+              ? 'Reconnecting...'
+              : 'Synced'}
         </span>
       </div>
 

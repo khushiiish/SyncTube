@@ -21,8 +21,9 @@ function initSocket(httpServer) {
       methods: ['GET', 'POST'],
       credentials: true,
     },
-    pingTimeout:  60000,
-    pingInterval: 25000,
+    maxHttpBufferSize: 2 * 1024 * 1024, // 2 MB buffer for voice message transfers
+    pingTimeout:       60000,
+    pingInterval:      25000,
   })
 
   io.on('connection', (socket) => {

@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { Users, Tv, Trash2, Copy, Check, ExternalLink, Calendar, Shield } from 'lucide-react'
-import { useSocketContext } from '../../context/SocketContext'
+import { useAuth, useUser } from '@clerk/react'
 import { deleteRoom } from '../../services/api'
 import { toast } from 'react-hot-toast'
 
 export default function RoomCard({ room, onJoin, onDeleteSuccess }) {
-  const { socket } = useSocketContext()
+  const { user, isSignedIn } = useUser()
+  const { getToken } = useAuth()
   const [copied, setCopied] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const isHost = socket?.id && socket.id === room.hostSocketId
+  const isOwner = Boolean(isSignedIn && user?.id && room.createdByClerkUserId && room.createdByClerkUserId === user.id)
   const inviteUrl = `${window.location.origin}/room/${room.roomId}`
 
   const handleCopyLink = (e) => {
@@ -26,7 +27,8 @@ export default function RoomCard({ room, onJoin, onDeleteSuccess }) {
 
     setIsDeleting(true)
     try {
-      await deleteRoom(room.roomId, socket.id)
+      const token = await getToken()
+      await deleteRoom(room.roomId, token)
       toast.success('Room deleted successfully')
       if (onDeleteSuccess) onDeleteSuccess()
     } catch (err) {
@@ -41,7 +43,7 @@ export default function RoomCard({ room, onJoin, onDeleteSuccess }) {
     try {
       const date = new Date(timeStr)
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    } catch (e) {
+    } catch {
       return 'Recently'
     }
   }
@@ -118,13 +120,13 @@ export default function RoomCard({ room, onJoin, onDeleteSuccess }) {
             {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
 
-          {/* Delete (Host only) */}
-          {isHost && (
+          {/* Delete (Creator only) */}
+          {isOwner && (
             <button
               onClick={handleDelete}
               disabled={isDeleting}
               className="p-2 border border-transparent hover:bg-red-500/10 text-[#ff5451] rounded-lg transition-colors disabled:opacity-50"
-              title="Delete Room"
+              title="Delete Room (Creator only)"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>

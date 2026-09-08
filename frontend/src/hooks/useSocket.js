@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useSocketContext } from '../context/SocketContext'
@@ -22,7 +22,6 @@ export default function useSocket({ roomId, playerControls }) {
     setVideoState,
     addChatMessage,
     setRoom,
-    currentUser,
     resetRoom,
   } = useRoomContext()
 

@@ -30,7 +30,9 @@ export default function QueueList() {
   const handleRemove = (item) => {
     if (!room?.roomId || !socket) return
 
-    const isOwnItem = item.addedBy === currentUser?.username
+    const isOwnItem = item.addedByParticipantId
+      ? item.addedByParticipantId === currentUser?.participantId
+      : item.addedBy === currentUser?.username
     if (!isHost && !(isModerator && isOwnItem)) {
       toast.error('Only the host, or moderator who added this video, can remove it.')
       return
@@ -95,7 +97,9 @@ export default function QueueList() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin">
         <AnimatePresence initial={false}>
           {queue.map((item, index) => {
-            const isOwnItem = item.addedBy === currentUser?.username
+            const isOwnItem = item.addedByParticipantId
+              ? item.addedByParticipantId === currentUser?.participantId
+              : item.addedBy === currentUser?.username
             const canDelete = isHost || (isModerator && isOwnItem)
             
             return (

@@ -1,11 +1,11 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import VideoControls from './VideoControls'
 import VideoUrlInput from './VideoUrlInput'
 import { useRoomContext } from '../../context/RoomContext'
 import { useSocketContext } from '../../context/SocketContext'
-import { EVENTS, emitQueueNext, emitSeek, emitPlay, emitPause } from '../../services/socketService'
+import { emitQueueNext, emitSeek, emitPlay, emitPause } from '../../services/socketService'
 
 /**
  * VideoPlayer — YouTube IFrame API container.
@@ -27,7 +27,7 @@ export default function VideoPlayer() {
     setTimeout(() => setShowTooltip(false), 2500)
   }
 
-  const togglePlayPause = () => {
+  const togglePlayPause = useCallback(() => {
     if (!playerRef.current || !isPlayerReady) return
 
     const now = Date.now()
@@ -46,9 +46,9 @@ export default function VideoPlayer() {
     } else {
       triggerNonControllerFeedback()
     }
-  }
+  }, [isPlayerReady, canControl, videoState.isPlaying, socket, room?.roomId])
 
-  const handleFullscreenToggle = () => {
+  const handleFullscreenToggle = useCallback(() => {
     const container = document.getElementById('player-container')
     if (!container) return
 
@@ -61,7 +61,7 @@ export default function VideoPlayer() {
         document.exitFullscreen()
       }
     }
-  }
+  }, [])
 
   const handlePlayerClick = () => {
     if (clickTimeoutRef.current) {
@@ -79,9 +79,9 @@ export default function VideoPlayer() {
     }, 250)
   }
 
-  // Periodic Host heartbeat to keep everyone in sync
+  // Periodic Host heartbeat to keep everyone in sync (sent strictly by primary connection to prevent jitter)
   useEffect(() => {
-    if (currentUser?.role !== 'host' || !playerRef.current || !isPlayerReady || !videoState.isPlaying) return
+    if (currentUser?.role !== 'host' || !currentUser?.isPrimaryConnection || !playerRef.current || !isPlayerReady || !videoState.isPlaying) return
 
     const interval = setInterval(() => {
       const currentTime = playerRef.current.getCurrentTime?.() || 0
@@ -89,7 +89,7 @@ export default function VideoPlayer() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [isPlayerReady, currentUser?.role, videoState.isPlaying, room?.roomId, socket])
+  }, [isPlayerReady, currentUser?.role, currentUser?.isPrimaryConnection, videoState.isPlaying, room?.roomId, socket])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -137,7 +137,7 @@ export default function VideoPlayer() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isPlayerReady, canControl, room, videoState])
+  }, [isPlayerReady, canControl, room, videoState, togglePlayPause, handleFullscreenToggle, socket])
 
   const videoId = videoState?.videoId
 

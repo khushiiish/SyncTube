@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
-import { Play, Pause, Volume2, VolumeX, Maximize, SkipForward } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react'
 import { useRoomContext } from '../../context/RoomContext'
 import { useSocketContext } from '../../context/SocketContext'
 import { emitPlay, emitPause, emitSeek } from '../../services/socketService'
@@ -25,7 +24,6 @@ export default function VideoControls({ playerRef, isPlayerReady, isSyncedUpdate
   const [showVolume, setShowVolume] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
   const rafRef = useRef(null)
   const progressRef = useRef(null)
 
@@ -33,7 +31,7 @@ export default function VideoControls({ playerRef, isPlayerReady, isSyncedUpdate
   useEffect(() => {
     if (!isPlayerReady) return
     const tick = () => {
-      if (!isDragging && playerRef.current) {
+      if (playerRef.current) {
         setCurrentTime(playerRef.current.getCurrentTime?.() || 0)
         setDuration(playerRef.current.getDuration?.() || 0)
       }
@@ -41,7 +39,7 @@ export default function VideoControls({ playerRef, isPlayerReady, isSyncedUpdate
     }
     tick()
     return () => clearTimeout(rafRef.current)
-  }, [isPlayerReady, isDragging, playerRef])
+  }, [isPlayerReady, playerRef])
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 

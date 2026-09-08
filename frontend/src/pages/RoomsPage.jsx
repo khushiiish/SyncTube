@@ -1,20 +1,25 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, SlidersHorizontal, RefreshCw, Film, Tv, Play, Plus, ArrowLeft } from 'lucide-react'
+import { Search, SlidersHorizontal, RefreshCw, Tv, Plus, ArrowLeft } from 'lucide-react'
+import { useAuth, useUser } from '@clerk/react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import RoomCard from '../components/rooms/RoomCard'
 import CreateRoomModal from '../components/modals/CreateRoomModal'
 import JoinRoomModal from '../components/modals/JoinRoomModal'
 import { getRooms, createRoom, joinRoom } from '../services/api'
+import { setRoomSession } from '../utils/roomSession'
 import { useRoomContext } from '../context/RoomContext'
 import { useSocketContext } from '../context/SocketContext'
+import useCreateRoomGate from '../hooks/useCreateRoomGate'
 import { toast } from 'react-hot-toast'
 
 export default function RoomsPage() {
   const navigate = useNavigate()
   const { setRoom, setCurrentUser } = useRoomContext()
   const { socket } = useSocketContext()
+  const { getToken } = useAuth()
+  const { user } = useUser()
 
   // Room list states
   const [rooms, setRooms] = useState([])
@@ -30,13 +35,16 @@ export default function RoomsPage() {
   const [isLoadingCreate, setIsLoadingCreate] = useState(false)
   const [isLoadingJoin, setIsLoadingJoin] = useState(false)
 
+  // Auth gate for room creation
+  const { handleCreateRoom: triggerCreateRoom } = useCreateRoomGate(() => setShowCreate(true))
+
   // Fetch rooms list
   const fetchRooms = async (silent = false) => {
     if (!silent) setIsLoading(true)
     try {
       const data = await getRooms()
       setRooms(data.rooms || [])
-    } catch (err) {
+    } catch {
       toast.error('Failed to load active rooms')
     } finally {
       if (!silent) setIsLoading(false)
@@ -73,16 +81,33 @@ export default function RoomsPage() {
   const handleCreateRoom = async ({ username, roomName }) => {
     setIsLoadingCreate(true)
     try {
-      const data = await createRoom({ username, roomName })
+      const token = await getToken()
+      if (!token) {
+        toast.error('Please sign in again to create a room.')
+        return
+      }
+
+      const data = await createRoom({ username, roomName }, token)
       const { room } = data
 
       setRoom(room)
-      setCurrentUser({ username, role: 'host', socketId: socket?.id })
+      setRoomSession(room.roomId, { username })
+      setCurrentUser({
+        username,
+        role: 'host',
+        socketId: socket?.id,
+        clerkUserId: user?.id,
+      })
 
       toast.success(`Room "${room.roomName}" created!`)
       navigate(`/room/${room.roomId}`)
     } catch (err) {
-      toast.error(err.message || 'Failed to create room')
+      const errMsg = err.message || 'Failed to create room'
+      if (errMsg.toLowerCase().includes('authentication') || errMsg.includes('401')) {
+        toast.error('Please sign in again to create a room.')
+      } else {
+        toast.error(errMsg)
+      }
     } finally {
       setIsLoadingCreate(false)
       setShowCreate(false)
@@ -97,9 +122,9 @@ export default function RoomsPage() {
       const { room } = data
 
       setRoom(room)
+      setRoomSession(room.roomId, { username })
       setCurrentUser({ username, role: 'participant', socketId: socket?.id })
 
-      toast.success(`Joined "${room.roomName}"!`)
       navigate(`/room/${room.roomId}`)
     } catch (err) {
       toast.error(err.message || 'Room not found. Check the code.')
@@ -132,7 +157,7 @@ export default function RoomsPage() {
     <div className="min-h-screen flex flex-col bg-[#131315] text-[#e5e1e4]">
       {/* Top Navbar */}
       <Navbar
-        onCreateRoom={() => setShowCreate(true)}
+        onCreateRoom={triggerCreateRoom}
         onJoinRoom={() => {
           setPrefillCode('')
           setShowJoin(true)
@@ -279,7 +304,7 @@ export default function RoomsPage() {
             </p>
 
             <button
-              onClick={() => setShowCreate(true)}
+              onClick={triggerCreateRoom}
               className="px-5 py-2.5 bg-[#ff5451] hover:bg-[#ffb3ad] text-white hover:text-[#68000a] font-[Geist,sans-serif] font-bold text-[14px] rounded-lg transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,84,81,0.25)] hover:shadow-[0_0_20px_rgba(255,84,81,0.4)]"
             >
               <Plus className="w-4 h-4" />

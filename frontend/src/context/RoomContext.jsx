@@ -5,11 +5,11 @@ import { createContext, useContext, useReducer, useCallback } from 'react'
  *
  * State shape:
  * {
- *   room: { roomId, roomName, hostSocketId } | null
- *   currentUser: { socketId, username, role } | null
- *   participants: Array<{ socketId, username, role }>
+ *   room: { roomId, roomName, hostParticipantId, hostSocketId } | null
+ *   currentUser: { participantId, username, role, socketId, isPrimaryConnection } | null
+ *   participants: Array<{ participantId, username, role, status }>
  *   videoState: { videoId, isPlaying, currentTime }
- *   chatMessages: Array<{ id, socketId, username, text, timestamp }>
+ *   chatMessages: Array<{ id, participantId, username, text, timestamp }>
  * }
  */
 
@@ -39,44 +39,69 @@ function roomReducer(state, action) {
     case 'SET_CURRENT_USER':
       return { ...state, currentUser: action.payload }
 
+    case 'SET_PRIMARY_CONNECTION':
+      return {
+        ...state,
+        currentUser: state.currentUser
+          ? { ...state.currentUser, isPrimaryConnection: Boolean(action.payload) }
+          : state.currentUser,
+      }
+
     case 'SET_PARTICIPANTS':
       return { ...state, participants: action.payload }
 
     case 'ADD_PARTICIPANT': {
-      const exists = state.participants.some(p => p.socketId === action.payload.socketId)
+      const targetId = action.payload.participantId || action.payload.socketId
+      const exists = state.participants.some(p => (p.participantId || p.socketId) === targetId)
       if (exists) return state
       return { ...state, participants: [...state.participants, action.payload] }
     }
 
-    case 'REMOVE_PARTICIPANT':
+    case 'REMOVE_PARTICIPANT': {
+      const targetId = action.payload
       return {
         ...state,
-        participants: state.participants.filter(p => p.socketId !== action.payload),
+        participants: state.participants.filter(p => (p.participantId || p.socketId) !== targetId),
       }
+    }
 
-    case 'UPDATE_PARTICIPANT_ROLE':
+    case 'UPDATE_PARTICIPANT_ROLE': {
+      const updateId = action.payload.participantId || action.payload.socketId
       return {
         ...state,
         participants: state.participants.map(p =>
-          p.socketId === action.payload.socketId
+          (p.participantId || p.socketId) === updateId
             ? { ...p, role: action.payload.role }
             : p
         ),
-        // Also update currentUser if it's us
         currentUser:
-          state.currentUser?.socketId === action.payload.socketId
+          state.currentUser && ((state.currentUser.participantId && state.currentUser.participantId === updateId) || state.currentUser.socketId === updateId)
             ? { ...state.currentUser, role: action.payload.role }
             : state.currentUser,
       }
+    }
 
     case 'SET_VIDEO_STATE':
       return { ...state, videoState: { ...state.videoState, ...action.payload } }
 
-    case 'ADD_CHAT_MESSAGE':
+    case 'SET_CHAT_MESSAGES':
       return {
         ...state,
-        chatMessages: [...state.chatMessages, action.payload].slice(-200), // keep last 200
+        chatMessages: Array.isArray(action.payload) ? action.payload.slice(-250) : [],
       }
+
+    case 'ADD_CHAT_MESSAGE': {
+      const msg = action.payload
+      if (!msg) return state
+      const msgId = msg.messageId || msg.id
+      if (msgId && state.chatMessages.some(m => (m.messageId || m.id) === msgId)) {
+        return state
+      }
+      return {
+        ...state,
+        chatMessages: [...state.chatMessages, msg].slice(-250),
+      }
+    }
 
     case 'RESET_ROOM':
       return initialState
@@ -96,11 +121,13 @@ export function RoomProvider({ children }) {
   const setRoom = useCallback((room) => dispatch({ type: 'SET_ROOM', payload: room }), [])
   const setQueue = useCallback((q) => dispatch({ type: 'SET_QUEUE', payload: q }), [])
   const setCurrentUser = useCallback((user) => dispatch({ type: 'SET_CURRENT_USER', payload: user }), [])
+  const setPrimaryConnection = useCallback((isPrimary) => dispatch({ type: 'SET_PRIMARY_CONNECTION', payload: isPrimary }), [])
   const setParticipants = useCallback((list) => dispatch({ type: 'SET_PARTICIPANTS', payload: list }), [])
   const addParticipant = useCallback((p) => dispatch({ type: 'ADD_PARTICIPANT', payload: p }), [])
-  const removeParticipant = useCallback((sid) => dispatch({ type: 'REMOVE_PARTICIPANT', payload: sid }), [])
+  const removeParticipant = useCallback((id) => dispatch({ type: 'REMOVE_PARTICIPANT', payload: id }), [])
   const updateParticipantRole = useCallback((data) => dispatch({ type: 'UPDATE_PARTICIPANT_ROLE', payload: data }), [])
   const setVideoState = useCallback((vs) => dispatch({ type: 'SET_VIDEO_STATE', payload: vs }), [])
+  const setChatMessages = useCallback((msgs) => dispatch({ type: 'SET_CHAT_MESSAGES', payload: msgs }), [])
   const addChatMessage = useCallback((msg) => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: msg }), [])
   const resetRoom = useCallback(() => dispatch({ type: 'RESET_ROOM' }), [])
 
@@ -113,11 +140,13 @@ export function RoomProvider({ children }) {
       setRoom,
       setQueue,
       setCurrentUser,
+      setPrimaryConnection,
       setParticipants,
       addParticipant,
       removeParticipant,
       updateParticipantRole,
       setVideoState,
+      setChatMessages,
       addChatMessage,
       resetRoom,
     }}>

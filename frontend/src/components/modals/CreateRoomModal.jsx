@@ -1,16 +1,25 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
+import { useUser } from '@clerk/react'
 import { X, Users } from 'lucide-react'
 import Button from '../ui/Button'
 
 /**
  * CreateRoomModal — glass card modal matching Stitch "Create Room Modal" design.
- * Fields: Username, Room Name
+ * Authenticated creator identity is displayed cleanly; only Room Name is required.
  * On submit: calls onSubmit({ username, roomName })
  */
 export default function CreateRoomModal({ isOpen, onClose, onSubmit, isLoading }) {
+  const { user } = useUser()
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
+
+  // Fallback chain for authenticated creator name
+  const creatorName =
+    user?.fullName?.trim() ||
+    user?.firstName?.trim() ||
+    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    'Host'
 
   // Close on Escape
   useEffect(() => {
@@ -20,7 +29,7 @@ export default function CreateRoomModal({ isOpen, onClose, onSubmit, isLoading }
   }, [isOpen, onClose])
 
   const submit = (data) => {
-    onSubmit(data)
+    onSubmit({ username: creatorName, roomName: data.roomName.trim() })
     reset()
   }
 
@@ -64,41 +73,39 @@ export default function CreateRoomModal({ isOpen, onClose, onSubmit, isLoading }
                 </button>
               </div>
 
-              <p className="font-[Inter,sans-serif] text-[14px] text-[#e4beba] mb-6 relative z-10">
+              <p className="font-[Inter,sans-serif] text-[14px] text-[#e4beba] mb-4 relative z-10">
                 Start a new watch party and invite friends.
               </p>
 
+              {/* Authenticated Identity Pill */}
+              <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-[#0e0e10]/80 border border-[#27272A] mb-5 relative z-10">
+                {user?.imageUrl ? (
+                  <img
+                    src={user.imageUrl}
+                    alt={creatorName}
+                    className="w-6 h-6 rounded-full object-cover ring-1 ring-[#ff5451]/40"
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-[#ff5451]/20 flex items-center justify-center text-[11px] font-bold text-[#ffb3ad]">
+                    {creatorName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="font-[Inter,sans-serif] text-[13px] text-[#e4beba]/75 truncate">
+                  Creating as <strong className="text-[#e5e1e4] font-medium">{creatorName}</strong>
+                </span>
+              </div>
+
               {/* Form */}
               <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4 relative z-10">
-                {/* Username */}
-                <div className="flex flex-col gap-1">
-                  <label className="font-[Geist,sans-serif] font-medium text-[14px] text-[#e5e1e4]">
-                    Username
-                  </label>
-                  <input
-                    id="create-username"
-                    type="text"
-                    placeholder="Enter your display name"
-                    className="bg-[#0e0e10] border border-[#27272A] rounded-lg px-4 py-2.5 font-[Inter,sans-serif] text-[14px] text-[#e5e1e4] placeholder:text-[#e4beba]/40 focus:outline-none focus:border-[#ffb3ad] focus:ring-1 focus:ring-[#ffb3ad]/30 transition-all duration-200"
-                    {...register('username', {
-                      required: 'Username is required',
-                      minLength: { value: 2, message: 'Min 2 characters' },
-                      maxLength: { value: 24, message: 'Max 24 characters' },
-                    })}
-                  />
-                  {errors.username && (
-                    <span className="text-[12px] text-[#ffb4ab]">{errors.username.message}</span>
-                  )}
-                </div>
-
                 {/* Room Name */}
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1.5">
                   <label className="font-[Geist,sans-serif] font-medium text-[14px] text-[#e5e1e4]">
                     Room Name
                   </label>
                   <input
                     id="create-roomname"
                     type="text"
+                    autoFocus
                     placeholder="e.g., Movie Night"
                     className="bg-[#0e0e10] border border-[#27272A] rounded-lg px-4 py-2.5 font-[Inter,sans-serif] text-[14px] text-[#e5e1e4] placeholder:text-[#e4beba]/40 focus:outline-none focus:border-[#ffb3ad] focus:ring-1 focus:ring-[#ffb3ad]/30 transition-all duration-200"
                     {...register('roomName', {

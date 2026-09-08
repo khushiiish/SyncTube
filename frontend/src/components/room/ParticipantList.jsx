@@ -5,7 +5,8 @@ import { useRoomContext } from '../../context/RoomContext'
 
 /**
  * ParticipantList — scrollable list of all room participants.
- * Ordered: host first, then mods, then participants.
+ * Ordered: host first, then mods, then participants, then viewers.
+ * Displays exactly one card per participant, regardless of open tabs.
  */
 export default function ParticipantList() {
   const { participants } = useRoomContext()
@@ -27,7 +28,7 @@ export default function ParticipantList() {
       ) : (
         <AnimatePresence mode="popLayout">
           {sorted.map(p => (
-            <ParticipantCard key={p.socketId} participant={p} />
+            <ParticipantCard key={p.participantId || p.socketId} participant={p} />
           ))}
         </AnimatePresence>
       )}

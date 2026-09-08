@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Zap, Key } from 'lucide-react'
+import { Key } from 'lucide-react'
 
 /**
  * HeroSection — animated mesh gradient hero with Create/Join CTAs.

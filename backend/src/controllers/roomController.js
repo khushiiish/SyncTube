@@ -13,9 +13,14 @@ async function createRoom(req, res, next) {
     if (username.length > 24) return res.status(400).json({ message: 'Username too long (max 24).' })
     if (roomName.length > 60) return res.status(400).json({ message: 'Room name too long (max 60).' })
 
+    // Verified Clerk user ID from authentication middleware
+    const auth = req.auth || {}
+    const createdByClerkUserId = auth.userId || null
+
     const room = await roomService.createRoom({
       username: username.trim(),
       roomName: roomName.trim(),
+      createdByClerkUserId,
     })
 
     return res.status(201).json({
@@ -73,18 +78,19 @@ async function getRoom(req, res, next) {
     return res.status(200).json({
       success: true,
       room: {
-        roomId:       room.roomId,
-        roomName:     room.roomName,
-        hostSocketId: room.hostSocketId,
-        videoState:   room.videoState,
-        participants: room.participants.map(p => ({
-          socketId: p.socketId,
-          username: p.username,
-          role:     p.role,
-          status:   p.status,
-        })),
-        participantCount: room.participants.length,
-        createdAt:    room.createdAt,
+        roomId:               room.roomId,
+        roomName:             room.roomName,
+        hostParticipantId:    room.hostParticipantId,
+        createdByClerkUserId: room.createdByClerkUserId,
+        videoState:           room.videoState,
+        participants:         room.toSafeParticipants ? room.toSafeParticipants() : (room.participants ? room.participants.map(p => ({
+          participantId: p.participantId || p.socketId,
+          username:      p.username,
+          role:          p.role,
+          status:        p.status,
+        })) : []),
+        participantCount:     room.participants ? room.participants.length : 0,
+        createdAt:            room.createdAt,
       },
     })
   } catch (err) {
@@ -117,14 +123,15 @@ async function getRooms(req, res, next) {
       }
 
       return {
-        roomId:           room.roomId,
-        roomName:         room.roomName,
+        roomId:               room.roomId,
+        roomName:             room.roomName,
         hostName,
-        hostSocketId:     room.hostSocketId,
-        participantCount: room.participants.length,
-        currentVideoTitle: room.videoState?.title || '',
-        currentVideoId:   room.videoState?.videoId || null,
-        createdAt:        room.createdAt,
+        hostParticipantId:    room.hostParticipantId,
+        createdByClerkUserId: room.createdByClerkUserId,
+        participantCount:     room.participants.length,
+        currentVideoTitle:    room.videoState?.title || '',
+        currentVideoId:       room.videoState?.videoId || null,
+        createdAt:            room.createdAt,
         status,
       }
     })
@@ -140,28 +147,31 @@ async function getRooms(req, res, next) {
 
 /**
  * DELETE /api/rooms/:id
- * Delete a room (only by its host).
+ * Delete a room (only by its authenticated creator).
  */
 async function deleteRoom(req, res, next) {
   try {
-    const { socketId } = req.body
     const roomId = req.params.id
+    const clerkUserId = req.auth?.userId
 
-    if (!socketId) {
-      return res.status(400).json({ message: 'Host Socket ID is required to verify permissions.' })
+    if (!clerkUserId) {
+      return res.status(401).json({ message: 'Authentication is required to delete a room.' })
     }
 
     const room = await roomService.findRoom(roomId)
-    
-    // Check if requester is the host of this room
-    if (room.hostSocketId && room.hostSocketId !== socketId) {
-      return res.status(403).json({ message: 'Only the host is authorized to delete this room.' })
+    if (!room) {
+      return res.status(404).json({ message: 'Room not found.' })
+    }
+
+    // Verify that the authenticated Clerk user is the verified creator
+    if (room.createdByClerkUserId !== clerkUserId) {
+      return res.status(403).json({ message: 'Only the creator of this room is authorized to delete it.' })
     }
 
     // Kick all clients currently inside the room
-    const io = req.app.get('io')
+    const io = req.app?.get?.('io')
     if (io) {
-      io.to(roomId).emit('kicked')
+      io.to(roomId.toUpperCase()).emit('kicked')
     }
 
     await roomService.deleteRoom(roomId)
@@ -176,7 +186,7 @@ async function deleteRoom(req, res, next) {
       message: 'Room deleted successfully.',
     })
   } catch (err) {
-    if (err.message.includes('not found')) {
+    if (err.message && err.message.includes('not found')) {
       return res.status(404).json({ message: err.message })
     }
     next(err)

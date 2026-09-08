@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Users, MessageSquare, ListVideo, Copy, Check, LogOut, HelpCircle, UserPlus } from 'lucide-react'
+import { Users, MessageSquare, ListVideo, Check, LogOut, HelpCircle, UserPlus } from 'lucide-react'
 import ParticipantList from './ParticipantList'
 import Chat from './Chat'
 import QueueList from './QueueList'
@@ -27,7 +27,7 @@ const TABS = [
  */
 export default function Sidebar() {
   const [activeTab, setActiveTab] = useState('participants')
-  const { room, currentUser, participants, resetRoom } = useRoomContext()
+  const { room, participants, resetRoom } = useRoomContext()
   const { socket } = useSocketContext()
   const navigate = useNavigate()
   const { copied, copy } = useCopyToClipboard()

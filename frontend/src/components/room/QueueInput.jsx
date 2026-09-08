@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, ListVideo, Play, Sparkles } from 'lucide-react'
+import { Plus, ListVideo, Sparkles } from 'lucide-react'
 import { useRoomContext } from '../../context/RoomContext'
 import { useSocketContext } from '../../context/SocketContext'
 import { emitQueueAdd } from '../../services/socketService'
@@ -12,7 +12,7 @@ export default function QueueInput() {
   const { socket } = useSocketContext()
 
   const extractVideoId = (inputUrl) => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
     const match = inputUrl.match(regExp)
     return match && match[2].length === 11 ? match[2] : null
   }
