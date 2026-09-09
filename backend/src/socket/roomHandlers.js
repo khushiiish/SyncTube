@@ -1025,12 +1025,14 @@ function registerRoomHandlers(socket, io) {
       } catch (_) {}
 
       const isUnavailable = err.message && err.message.includes('unavailable')
+      const errorMessage = isUnavailable
+        ? 'Email invitations are currently unavailable on this server.'
+        : (err.message ? `Could not send invitation: ${err.message}` : 'Could not send invitation. Please try again later.')
+
       return ack({
         success: false,
         code:    isUnavailable ? 'SERVICE_UNAVAILABLE' : 'SEND_FAILED',
-        message: isUnavailable
-          ? 'Email invitations are currently unavailable on this server.'
-          : 'Could not send invitation. Please try again later.',
+        message: errorMessage,
       })
     }
   })

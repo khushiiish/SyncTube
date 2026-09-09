@@ -1,4 +1,6 @@
 const dns = require('dns')
+const fs = require('fs')
+const path = require('path')
 const nodemailer = require('nodemailer')
 const { escapeHtml } = require('../utils/escapeHtml')
 
@@ -7,18 +9,19 @@ if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first')
 }
 
-/**
- * emailService — Reusable Nodemailer service for SyncTube.
- *
- * Implements:
- * - Single cached transporter with safe options
- * - Non-blocking startup verification
- * - Hardened Nodemailer configuration (no file or url access)
- * - Safe HTML escaping and responsive dark-mode invitation templates
- */
+// Log directory for invite diagnostics
+const LOG_DIR = path.join(__dirname, '../../logs')
+try {
+  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true })
+} catch (_) {}
 
-let transporter = null
-let isConfigured = false
+function logInvite(message) {
+  const line = `[${new Date().toISOString()}] ${message}\n`
+  try {
+    fs.appendFileSync(path.join(LOG_DIR, 'invite.log'), line)
+  } catch (_) {}
+  console.log(`[Mail] ${message}`)
+}
 
 /**
  * Checks if all essential SMTP configuration variables exist.
@@ -32,14 +35,35 @@ function checkSmtpConfig() {
 }
 
 /**
- * Initializes the reusable Nodemailer transporter.
- * Reuses existing instance if already created.
+ * Creates a Nodemailer transporter instance with specified port, security, and timeouts.
+ */
+function createTransporter(port, secure) {
+  const host = (process.env.SMTP_HOST || '').toLowerCase()
+  const isGmail = host.includes('gmail')
+  const actualHost = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost')
+
+  return nodemailer.createTransport({
+    host: actualHost,
+    port,
+    secure,
+    family: 4, // Force IPv4 to prevent hanging on dropped IPv6 routes
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
+    socketTimeout: 15000,
+    disableFileAccess: true,
+    disableUrlAccess: true,
+  })
+}
+
+/**
+ * Returns a configured transporter for standard usage.
  */
 function getTransporter() {
-  if (transporter) return transporter
-
   if (!checkSmtpConfig()) {
-    isConfigured = false
     return null
   }
 
@@ -50,26 +74,7 @@ function getTransporter() {
     ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
     : (port === 465)
 
-  const transportConfig = {
-    host: process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost'),
-    port,
-    secure,
-    family: 4, // Force IPv4 to prevent hanging on dropped IPv6 routes
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
-    disableFileAccess: true,
-    disableUrlAccess: true,
-  }
-
-  transporter = nodemailer.createTransport(transportConfig)
-
-  isConfigured = true
-  return transporter
+  return createTransporter(port, secure)
 }
 
 /**
@@ -78,7 +83,7 @@ function getTransporter() {
  */
 function verifySmtp() {
   if (!checkSmtpConfig()) {
-    console.log('[Mail] SMTP not configured. Email invitations disabled.')
+    logInvite('SMTP not configured. Email invitations disabled.')
     return Promise.resolve(false)
   }
 
@@ -87,12 +92,11 @@ function verifySmtp() {
 
   return transport.verify()
     .then(() => {
-      console.log('[Mail] SMTP connection verified successfully.')
+      logInvite('SMTP connection verified successfully.')
       return true
     })
     .catch((err) => {
-      // Safe error log without exposing auth or secrets
-      console.warn(`[Mail] SMTP verification failed: ${err.message || 'Unknown connection error'}`)
+      logInvite(`SMTP startup verification warning: ${err.message || 'Unknown connection error'}`)
       return false
     })
 }
@@ -104,9 +108,7 @@ function verifySmtp() {
  * @returns {Promise<{ success: boolean, messageId?: string }>}
  */
 async function sendRoomInvite({ to, roomName, roomId, inviterName }) {
-  const transport = getTransporter()
-
-  if (!transport || !isConfigured) {
+  if (!checkSmtpConfig()) {
     throw new Error('Email invitations are currently unavailable.')
   }
 
@@ -231,8 +233,42 @@ You do not need an account to join. Simply open the link and choose a display na
     html: htmlContent,
   }
 
-  const result = await transport.sendMail(mailOptions)
-  return { success: true, messageId: result.messageId }
+  // Primary port configuration (e.g. 465 SSL or configured port)
+  const host = (process.env.SMTP_HOST || '').toLowerCase()
+  const isGmail = host.includes('gmail')
+  const primaryPort = parseInt(process.env.SMTP_PORT, 10) || (isGmail ? 465 : 587)
+  const primarySecure = process.env.SMTP_SECURE !== undefined
+    ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
+    : (primaryPort === 465)
+
+  // Secondary fallback port (465 <-> 587)
+  const fallbackPort = primaryPort === 465 ? 587 : 465
+  const fallbackSecure = fallbackPort === 465
+
+  logInvite(`Dispatching invitation to "${to}" for room "${roomId}" (primary port: ${primaryPort})`)
+
+  let lastError = null
+  // Attempt 1: Primary port
+  try {
+    const transport = createTransporter(primaryPort, primarySecure)
+    const result = await transport.sendMail(mailOptions)
+    logInvite(`SUCCESS: Invitation delivered to "${to}" via port ${primaryPort} (messageId: ${result.messageId})`)
+    return { success: true, messageId: result.messageId }
+  } catch (err1) {
+    lastError = err1
+    logInvite(`Primary port ${primaryPort} delivery failed for "${to}": ${err1.message}. Attempting fallback port ${fallbackPort}...`)
+  }
+
+  // Attempt 2: Fallback port
+  try {
+    const fallbackTransport = createTransporter(fallbackPort, fallbackSecure)
+    const result = await fallbackTransport.sendMail(mailOptions)
+    logInvite(`SUCCESS: Invitation delivered to "${to}" via fallback port ${fallbackPort} (messageId: ${result.messageId})`)
+    return { success: true, messageId: result.messageId }
+  } catch (err2) {
+    logInvite(`Fallback port ${fallbackPort} also failed for "${to}": ${err2.message}`)
+    throw new Error(`Email delivery failed: ${err2.message || lastError.message}`)
+  }
 }
 
 module.exports = {
