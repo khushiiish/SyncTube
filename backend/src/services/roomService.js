@@ -1,4 +1,6 @@
 const Room = require('../models/Room')
+const RoomBlock = require('../models/RoomBlock')
+const roomBlockService = require('./roomBlockService')
 const { generateRoomId } = require('../utils/generateRoomId')
 const { nanoid } = require('nanoid')
 const crypto = require('crypto')
@@ -9,21 +11,23 @@ const voiceCleanupService = require('./voiceCleanupService')
  * Controllers and socket handlers call these functions.
  * Keeps DB logic out of routes and socket handlers.
  *
- * Phase 3 Architecture:
- * - Participants are identified by stable participantId and identityHash.
- * - Same identity attaches to existing participant, adding socketId to participant.socketIds.
- * - Disconnects remove socketIds; leave finalization only occurs when all sockets disconnect (post-grace).
- * - Kicking atomically records identityHash in room.blockedParticipants.
+ * Phase 4 Architecture:
+ * - Single-collection RoomBlock enforces room-scoped participant bans.
+ * - Single-active-tab policy per participant identity with authoritative takeover.
+ * - Room mutation lock serializes join, takeover, and kick mutations per room.
  */
 
 /**
  * Create a new room.
+ * Ensures generated roomId has no collisions with active rooms or unexpired room blocks.
  */
 async function createRoom({ username, roomName, createdByClerkUserId }) {
   let roomId, exists
   do {
     roomId = generateRoomId()
-    exists = await Room.exists({ roomId })
+    const roomExists = await Room.exists({ roomId })
+    const blockExists = await RoomBlock.exists({ roomId })
+    exists = roomExists || blockExists
   } while (exists)
 
   const room = new Room({
@@ -56,16 +60,14 @@ async function findRoom(roomId) {
 /**
  * Join or attach participant to a room.
  *
- * If a participant with the same identityHash already exists:
- *   - Attaches socketId to existing participant.socketIds
- *   - Preserves canonical username and current role
- *   - Returns isNewParticipant: false
- *
- * If participant does not exist:
- *   - Checks if identityHash is on room.blockedParticipants -> returns blocked: true
- *   - Assigns role ('host' if verified creator or first participant in legacy room)
- *   - Generates stable participantId
- *   - Returns isNewParticipant: true
+ * Checks:
+ * 1. RoomBlock check: If identity is blocked from this specific room -> returns blocked: true.
+ * 2. Active Tab check:
+ *    - If participant exists and is active in another tab (activeTabId !== tabId and has active sockets):
+ *      - If takeover !== true -> returns activeElsewhere: true.
+ *      - If takeover === true -> replaces active connection, preserves participantId/role, returns takeover: true.
+ *    - If same tab reconnect or no active sockets -> replaces socket seamlessly.
+ * 3. New participant -> creates stable participant with activeTabId, assigns role.
  *
  * @param {string} roomId
  * @param {Object} params
@@ -73,46 +75,132 @@ async function findRoom(roomId) {
  * @param {string} params.username
  * @param {string} params.identityHash
  * @param {string|null} [params.clerkUserId]
+ * @param {string|null} [params.tabId]
+ * @param {boolean} [params.takeover=false]
+ * @param {string[]} [params.activeSockets=[]] - Currently connected socket IDs in the server
  */
-async function joinOrAttachParticipant(roomId, { socketId, username, identityHash, clerkUserId }) {
+async function joinOrAttachParticipant(roomId, {
+  socketId,
+  username,
+  identityHash,
+  clerkUserId,
+  tabId = null,
+  takeover = false,
+  activeSockets = [],
+}) {
   const room = await Room.findOne({ roomId: roomId.toUpperCase() })
   if (!room) throw new Error('Room not found.')
 
-  // 1. Check if identity is blocked from this room
-  if (room.isIdentityBlocked(identityHash)) {
-    return { room, participant: null, isNewParticipant: false, isPrimary: false, blocked: true }
+  // 1. Authoritative RoomBlock check (scoped by roomId + identityHash)
+  let blocked = await roomBlockService.isBlocked(room.roomId, identityHash)
+
+  // Legacy fallback: check embedded blockedParticipants in existing rooms
+  if (!blocked && room.isIdentityBlocked(identityHash)) {
+    const roomExpiresAt = new Date(room.createdAt.getTime() + roomBlockService.ROOM_TTL_MS)
+    await roomBlockService.blockIdentity({
+      roomId: room.roomId,
+      identityHash,
+      expiresAt: roomExpiresAt,
+    })
+    blocked = true
   }
 
-  // 2. Check if a participant with this identity already exists (same user in another tab or reconnect)
+  if (blocked) {
+    return {
+      room,
+      participant: null,
+      isNewParticipant: false,
+      isPrimary: false,
+      blocked: true,
+      activeElsewhere: false,
+      takeover: false,
+    }
+  }
+
+  // 2. Check if participant with this identity already exists
   let participant = room.findParticipantByIdentityHash(identityHash)
 
   if (participant) {
-    // Attach current connection to existing participant
+    // Check if participant currently has an active connection on ANOTHER tab
+    const hasLiveSockets = Array.isArray(participant.socketIds) &&
+      participant.socketIds.some(sid => activeSockets.includes(sid))
+
+    const isDifferentTab = Boolean(
+      tabId &&
+      participant.activeTabId &&
+      participant.activeTabId !== tabId &&
+      hasLiveSockets
+    )
+
+    if (isDifferentTab) {
+      if (!takeover) {
+        // Room is open elsewhere; do not attach socket or modify participant
+        return {
+          room,
+          participant,
+          isNewParticipant: false,
+          isPrimary: false,
+          blocked: false,
+          activeElsewhere: true,
+          takeover: false,
+        }
+      }
+
+      // Authoritative takeover requested by user clicking "Switch here"
+      const previousSocketIds = [...(participant.socketIds || [])]
+
+      participant.activeTabId = tabId
+      participant.socketIds = [socketId]
+      participant.primarySocketId = socketId
+      participant.status = 'online'
+
+      if (participant.role === 'host') {
+        room.hostParticipantId = participant.participantId
+        room.hostSocketId = socketId
+      }
+
+      await room.save()
+
+      return {
+        room,
+        participant,
+        isNewParticipant: false,
+        isPrimary: true,
+        blocked: false,
+        activeElsewhere: false,
+        takeover: true,
+        previousSocketIds,
+      }
+    }
+
+    // Normal reconnect / recovery (same tab or previous tab closed)
+    if (tabId) {
+      participant.activeTabId = tabId
+    }
+
     if (!participant.socketIds) participant.socketIds = []
     if (!participant.socketIds.includes(socketId)) {
       participant.socketIds.push(socketId)
     }
 
-    // Designate primary socket if not set or invalid
-    if (!participant.primarySocketId || !participant.socketIds.includes(participant.primarySocketId)) {
-      participant.primarySocketId = socketId
-    }
-
+    participant.primarySocketId = socketId
     participant.status = 'online'
 
-    // If host, update room.hostSocketId to current primary
     if (participant.role === 'host') {
       room.hostParticipantId = participant.participantId
-      room.hostSocketId = participant.primarySocketId
+      room.hostSocketId = socketId
     }
 
     await room.save()
+
     return {
       room,
       participant,
       isNewParticipant: false,
-      isPrimary: participant.primarySocketId === socketId,
+      isPrimary: true,
       blocked: false,
+      activeElsewhere: false,
+      takeover: false,
     }
   }
 
@@ -120,14 +208,12 @@ async function joinOrAttachParticipant(roomId, { socketId, username, identityHas
   let assignedRole = 'participant'
 
   if (room.createdByClerkUserId) {
-    // Authenticated room: only verified creator receives host role upon joining
     if (clerkUserId && clerkUserId === room.createdByClerkUserId) {
       assignedRole = 'host'
     } else {
       assignedRole = 'participant'
     }
   } else {
-    // Legacy room or unauthenticated creation: first joiner is host
     if (room.participants.length === 0) {
       assignedRole = 'host'
     }
@@ -141,6 +227,7 @@ async function joinOrAttachParticipant(roomId, { socketId, username, identityHas
     role: assignedRole,
     socketIds: [socketId],
     primarySocketId: socketId,
+    activeTabId: tabId,
     joinedAt: new Date(),
     status: 'online',
   }
@@ -160,6 +247,8 @@ async function joinOrAttachParticipant(roomId, { socketId, username, identityHas
     isNewParticipant: true,
     isPrimary: true,
     blocked: false,
+    activeElsewhere: false,
+    takeover: false,
   }
 }
 
@@ -254,6 +343,7 @@ async function finalizeParticipantLeave(roomId, participantId) {
   // Delete empty rooms
   if (room.participants.length === 0) {
     await voiceCleanupService.cleanupRoomAssets(room.roomId)
+    await roomBlockService.removeRoomBlocks(room.roomId)
     await Room.deleteOne({ roomId: room.roomId })
     return { room: null, leavingParticipant, newHost: null }
   }
@@ -264,6 +354,11 @@ async function finalizeParticipantLeave(roomId, participantId) {
 
 /**
  * Block an identity and remove participant from the room (Host kick action).
+ *
+ * CRITICAL ORDER OF OPERATIONS:
+ * 1. Persist the RoomBlock record FIRST to eliminate the rejoin race window.
+ * 2. Only after block is saved, remove participant from room.participants.
+ * 3. Return target and its active sockets for immediate KICKED eviction.
  *
  * @param {string} roomId
  * @param {string} targetParticipantId
@@ -277,15 +372,15 @@ async function blockAndRemoveParticipant(roomId, targetParticipantId, blockedByP
   const target = room.findParticipantById(targetParticipantId)
   if (!target) return null
 
-  // Atomically add identityHash to blocked list
-  if (!room.blockedParticipants) room.blockedParticipants = []
-  if (!room.isIdentityBlocked(target.identityHash)) {
-    room.blockedParticipants.push({
-      identityHash: target.identityHash,
-      blockedAt: new Date(),
-      blockedByParticipantId: blockedByParticipantId || null,
-    })
-  }
+  // 1. CREATE RoomBlock RECORD FIRST in dedicated collection
+  const roomExpiresAt = new Date(room.createdAt.getTime() + roomBlockService.ROOM_TTL_MS)
+  await roomBlockService.blockIdentity({
+    roomId: room.roomId,
+    identityHash: target.identityHash,
+    blockedByParticipantId: blockedByParticipantId || null,
+    reason: 'removed_by_host',
+    expiresAt: roomExpiresAt,
+  })
 
   // Collect all active sockets for kick notification
   const targetSockets = [...(target.socketIds || [])]
@@ -293,7 +388,7 @@ async function blockAndRemoveParticipant(roomId, targetParticipantId, blockedByP
     targetSockets.push(target.primarySocketId)
   }
 
-  // Remove participant
+  // 2. Remove participant from Room
   room.participants = room.participants.filter(p => p.participantId !== targetParticipantId)
 
   await room.save()
@@ -508,6 +603,7 @@ async function getChatHistory(roomId) {
 async function deleteRoom(roomId) {
   const normId = roomId.toUpperCase()
   await voiceCleanupService.cleanupRoomAssets(normId)
+  await roomBlockService.removeRoomBlocks(normId)
   return await Room.deleteOne({ roomId: normId })
 }
 

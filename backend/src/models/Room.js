@@ -20,6 +20,7 @@ const participantSchema = new mongoose.Schema({
   role:            { type: String, enum: ['host', 'moderator', 'participant', 'viewer'], default: 'participant' },
   socketIds:       [{ type: String }],
   primarySocketId: { type: String, default: null },
+  activeTabId:     { type: String, default: null },
   joinedAt:        { type: Date, default: Date.now },
   status:          { type: String, enum: ['online', 'reconnecting', 'offline', 'buffering'], default: 'online' },
   // Backward-compatibility bridge for any old Phase 2 documents

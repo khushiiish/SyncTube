@@ -16,8 +16,9 @@ import { useEffect, useRef } from 'react'
  * @param {Object} params
  * @param {string} params.roomId
  * @param {Function} [params.onKicked] - Invoked when another tab broadcasts a kick event
+ * @param {Function} [params.onTakenOver] - Invoked when another tab broadcasts a takeover event
  */
-export function useRoomTabSync({ roomId, onKicked }) {
+export function useRoomTabSync({ roomId, onKicked, onTakenOver }) {
   const channelRef = useRef(null)
 
   useEffect(() => {
@@ -35,6 +36,10 @@ export function useRoomTabSync({ roomId, onKicked }) {
         if (typeof onKicked === 'function') {
           onKicked()
         }
+      } else if (type === 'ROOM_TAKEN_OVER') {
+        if (typeof onTakenOver === 'function') {
+          onTakenOver()
+        }
       }
     }
 
@@ -42,7 +47,7 @@ export function useRoomTabSync({ roomId, onKicked }) {
       channel.close()
       channelRef.current = null
     }
-  }, [roomId, onKicked])
+  }, [roomId, onKicked, onTakenOver])
 
   /**
    * Broadcast a coordination event to other tabs of the same room on this browser.

@@ -6,6 +6,7 @@ const { validateEmail } = require('../utils/validateEmail')
 const { checkAndRecordInvite, rollbackInvite } = require('../services/inviteRateLimiter')
 const { deriveIdentity } = require('../utils/identityService')
 const disconnectGraceManager = require('../services/disconnectGraceManager')
+const { withRoomLock } = require('../services/roomMutationLock')
 const { uploadAudio, deleteAudio } = require('../services/voiceStorageService')
 const { checkAndRecordVoice } = require('../services/voiceRateLimiter')
 const { checkAndRecordChat } = require('../services/chatRateLimiter')
@@ -42,6 +43,7 @@ const EVENTS = {
   SYNC_STATE:                 'sync_state',
   ROLE_UPDATED:               'role_updated',
   KICKED:                     'kicked',
+  ROOM_TAKEN_OVER:            'room_taken_over',
   CHAT_MESSAGE:               'chat_message',
   ERROR:                      'error',
   PRIMARY_CONNECTION_CHANGED: 'primary_connection_changed',
@@ -94,7 +96,7 @@ function registerRoomHandlers(socket, io) {
    */
   socket.on(EVENTS.JOIN_ROOM, async (payload, callback) => {
     const ack = typeof callback === 'function' ? callback : () => {}
-    const { roomId, username, guestDeviceId, clerkToken } = payload || {}
+    const { roomId, username, guestDeviceId, clerkToken, tabId, takeover } = payload || {}
 
     try {
       if (!roomId || typeof roomId !== 'string') {
@@ -104,83 +106,127 @@ function registerRoomHandlers(socket, io) {
         return ack({ success: false, code: 'INVALID_USERNAME', message: 'Username is required.' })
       }
 
-      // 1. Derive authoritative identity hash
-      let identity
-      try {
-        identity = await deriveIdentity({ guestDeviceId, clerkToken })
-      } catch (authErr) {
+      const safeTabId = (tabId && typeof tabId === 'string') ? tabId.trim().slice(0, 64) : null
+
+      // Serialize join mutations for this room
+      return await withRoomLock(roomId, async () => {
+        // 1. Derive authoritative identity hash
+        let identity
+        try {
+          identity = await deriveIdentity({ guestDeviceId, clerkToken })
+        } catch (authErr) {
+          return ack({
+            success: false,
+            code: authErr.code || 'INVALID_AUTH',
+            message: authErr.message || 'Identity verification failed.',
+          })
+        }
+
+        // Active sockets currently connected to the server
+        const activeSockets = Array.from(io.sockets.sockets.keys())
+
+        // 2. Attach or create participant in room
+        const result = await roomService.joinOrAttachParticipant(roomId, {
+          socketId: socket.id,
+          username: username.trim(),
+          identityHash: identity.identityHash,
+          clerkUserId: identity.clerkUserId,
+          tabId: safeTabId,
+          takeover: Boolean(takeover),
+          activeSockets,
+        })
+
+        if (result.blocked) {
+          return ack({
+            success: false,
+            code: 'BANNED_FROM_ROOM',
+            message: 'You were removed from this room and cannot rejoin.',
+          })
+        }
+
+        if (result.activeElsewhere) {
+          return ack({
+            success: false,
+            code: 'ROOM_ACTIVE_ELSEWHERE',
+            message: 'This room is already open in another tab.',
+          })
+        }
+
+        const { room, participant, isNewParticipant, isPrimary, takeover: isTakeover, previousSocketIds } = result
+
+        // 3. Cancel any pending disconnect grace period for this participant
+        disconnectGraceManager.cancelDisconnectGrace(room.roomId, participant.participantId)
+
+        // 4. Attach socket metadata
+        socket.roomId = room.roomId
+        socket.participantId = participant.participantId
+        socket.username = participant.username
+        socket.data = {
+          roomId: room.roomId,
+          participantId: participant.participantId,
+          username: participant.username,
+        }
+        socket.join(room.roomId)
+
+        // 5. Broadcast user_joined ONLY if this is a genuinely new participant
+        if (isNewParticipant) {
+          socket.to(room.roomId).emit(EVENTS.USER_JOINED, {
+            participant: room.toSafeParticipant(participant),
+          })
+          io.emit('rooms_updated')
+        }
+
+        // 6. Send sync_state (full room state) to the newly connected socket
+        socket.emit(EVENTS.SYNC_STATE, {
+          room: {
+            roomId:            room.roomId,
+            roomName:          room.roomName,
+            hostParticipantId: room.hostParticipantId,
+            hostSocketId:      room.hostSocketId,
+          },
+          participants:             room.toSafeParticipants(),
+          videoState:               room.videoState,
+          queue:                    room.queue,
+          chatMessages:             room.toSafeChatMessages(),
+          currentUserRole:          participant.role,
+          currentUserParticipantId: participant.participantId,
+          isPrimaryConnection:      isPrimary,
+        })
+
+        // 7. If this was a takeover, evict previous active sockets AFTER new connection is established
+        if (isTakeover && Array.isArray(previousSocketIds)) {
+          for (const oldSid of previousSocketIds) {
+            if (oldSid !== socket.id) {
+              io.to(oldSid).emit(EVENTS.ROOM_TAKEN_OVER, {
+                roomId: room.roomId,
+                reason: 'switched_to_another_tab',
+              })
+              const oldSock = io.sockets.sockets.get(oldSid)
+              if (oldSock) {
+                oldSock.leave(room.roomId)
+                oldSock.roomId = null
+                oldSock.participantId = null
+                oldSock.username = null
+                if (oldSock.data) {
+                  oldSock.data.roomId = null
+                  oldSock.data.participantId = null
+                  oldSock.data.username = null
+                }
+              }
+            }
+          }
+        }
+
+        console.log(`[Socket] ${participant.username} (${socket.id}) attached to ${participant.participantId} in room ${room.roomId} (new: ${isNewParticipant}, primary: ${isPrimary}, takeover: ${Boolean(isTakeover)})`)
+
         return ack({
-          success: false,
-          code: authErr.code || 'INVALID_AUTH',
-          message: authErr.message || 'Identity verification failed.',
+          success: true,
+          participantId:       participant.participantId,
+          username:            participant.username,
+          role:                participant.role,
+          isPrimaryConnection: isPrimary,
+          takeover:            Boolean(isTakeover),
         })
-      }
-
-      // 2. Attach or create participant in room
-      const result = await roomService.joinOrAttachParticipant(roomId, {
-        socketId: socket.id,
-        username: username.trim(),
-        identityHash: identity.identityHash,
-        clerkUserId: identity.clerkUserId,
-      })
-
-      if (result.blocked) {
-        return ack({
-          success: false,
-          code: 'BANNED_FROM_ROOM',
-          message: 'You were removed from this room and cannot rejoin.',
-        })
-      }
-
-      const { room, participant, isNewParticipant, isPrimary } = result
-
-      // 3. Cancel any pending disconnect grace period for this participant
-      disconnectGraceManager.cancelDisconnectGrace(room.roomId, participant.participantId)
-
-      // 4. Attach socket metadata
-      socket.roomId = room.roomId
-      socket.participantId = participant.participantId
-      socket.username = participant.username
-      socket.data = {
-        roomId: room.roomId,
-        participantId: participant.participantId,
-        username: participant.username,
-      }
-      socket.join(room.roomId)
-
-      // 5. Broadcast user_joined ONLY if this is a genuinely new participant
-      if (isNewParticipant) {
-        socket.to(room.roomId).emit(EVENTS.USER_JOINED, {
-          participant: room.toSafeParticipant(participant),
-        })
-        io.emit('rooms_updated')
-      }
-
-      // 6. Send sync_state (full room state) to the newly connected socket
-      socket.emit(EVENTS.SYNC_STATE, {
-        room: {
-          roomId:            room.roomId,
-          roomName:          room.roomName,
-          hostParticipantId: room.hostParticipantId,
-          hostSocketId:      room.hostSocketId,
-        },
-        participants:             room.toSafeParticipants(),
-        videoState:               room.videoState,
-        queue:                    room.queue,
-        chatMessages:             room.toSafeChatMessages(),
-        currentUserRole:          participant.role,
-        currentUserParticipantId: participant.participantId,
-        isPrimaryConnection:      isPrimary,
-      })
-
-      console.log(`[Socket] ${participant.username} (${socket.id}) attached to ${participant.participantId} in room ${room.roomId} (new: ${isNewParticipant}, primary: ${isPrimary})`)
-
-      return ack({
-        success: true,
-        participantId:       participant.participantId,
-        username:            participant.username,
-        role:                participant.role,
-        isPrimaryConnection: isPrimary,
       })
     } catch (err) {
       console.error('[Socket] join_room error:', err.message)
@@ -535,50 +581,60 @@ function registerRoomHandlers(socket, io) {
     try {
       if (!isSocketInRoom(socket, roomId)) return
 
-      const room = await roomService.findRoom(roomId)
-      if (!room) return
-      if (!room.hasRoleForSocket(socket.id, 'host')) {
-        socket.emit(EVENTS.ERROR, { message: 'Only the host can remove participants.' })
-        return
-      }
-
-      const hostParticipant = room.findParticipantBySocket(socket.id)
-      let targetId = targetParticipantId
-      if (!targetId && targetSocketId) {
-        targetId = room.findParticipantBySocket(targetSocketId)?.participantId
-      }
-
-      if (!targetId) return
-      if (hostParticipant && targetId === hostParticipant.participantId) {
-        socket.emit(EVENTS.ERROR, { message: 'You cannot remove yourself.' })
-        return
-      }
-
-      // Block identity and remove participant from DB
-      const result = await roomService.blockAndRemoveParticipant(room.roomId, targetId, hostParticipant?.participantId)
-      if (!result) return
-
-      const { target, targetSockets } = result
-
-      // 1. Notify and disconnect ALL sockets belonging to this participant
-      targetSockets.forEach(sid => {
-        io.to(sid).emit(EVENTS.KICKED, {
-          roomId: room.roomId,
-          reason: 'removed_by_host',
-        })
-        const targetSock = io.sockets.sockets.get(sid)
-        if (targetSock) {
-          targetSock.leave(room.roomId)
+      await withRoomLock(roomId, async () => {
+        const room = await roomService.findRoom(roomId)
+        if (!room) return
+        if (!room.hasRoleForSocket(socket.id, 'host')) {
+          socket.emit(EVENTS.ERROR, { message: 'Only the host can remove participants.' })
+          return
         }
-      })
 
-      // 2. Notify all remaining participants exactly once
-      socket.to(room.roomId).emit(EVENTS.USER_LEFT, {
-        participantId: target.participantId,
-        username:      target.username,
-      })
+        const hostParticipant = room.findParticipantBySocket(socket.id)
+        let targetId = targetParticipantId
+        if (!targetId && targetSocketId) {
+          targetId = room.findParticipantBySocket(targetSocketId)?.participantId
+        }
 
-      io.emit('rooms_updated')
+        if (!targetId) return
+        if (hostParticipant && targetId === hostParticipant.participantId) {
+          socket.emit(EVENTS.ERROR, { message: 'You cannot remove yourself.' })
+          return
+        }
+
+        // Block identity in RoomBlock FIRST and remove participant from DB
+        const result = await roomService.blockAndRemoveParticipant(room.roomId, targetId, hostParticipant?.participantId)
+        if (!result) return
+
+        const { target, targetSockets } = result
+
+        // 1. Notify and disconnect ALL sockets belonging to this participant, clearing room metadata
+        targetSockets.forEach(sid => {
+          io.to(sid).emit(EVENTS.KICKED, {
+            roomId: room.roomId,
+            reason: 'removed_by_host',
+          })
+          const targetSock = io.sockets.sockets.get(sid)
+          if (targetSock) {
+            targetSock.leave(room.roomId)
+            targetSock.roomId = null
+            targetSock.participantId = null
+            targetSock.username = null
+            if (targetSock.data) {
+              targetSock.data.roomId = null
+              targetSock.data.participantId = null
+              targetSock.data.username = null
+            }
+          }
+        })
+
+        // 2. Notify all remaining participants exactly once
+        socket.to(room.roomId).emit(EVENTS.USER_LEFT, {
+          participantId: target.participantId,
+          username:      target.username,
+        })
+
+        io.emit('rooms_updated')
+      })
     } catch (err) {
       console.error('[Socket] remove_participant error:', err.message)
       socket.emit(EVENTS.ERROR, { message: err.message })

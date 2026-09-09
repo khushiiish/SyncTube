@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@clerk/react'
@@ -7,29 +7,38 @@ import VideoPlayer from '../components/room/VideoPlayer'
 import QueueInput from '../components/room/QueueInput'
 import Sidebar from '../components/room/Sidebar'
 import ConnectionBanner from '../components/room/ConnectionBanner'
+import RoomAlreadyOpen from '../components/room/RoomAlreadyOpen'
 import { useRoomContext } from '../context/RoomContext'
 import { useSocketContext } from '../context/SocketContext'
 import { EVENTS, emitJoinRoom, emitSyncRequest } from '../services/socketService'
 import { getRoom } from '../services/api'
 import { getGuestDeviceId } from '../utils/clientIdentity'
+import { getTabId } from '../utils/tabIdentity'
 import { getRoomSession, setRoomSession, clearRoomSession } from '../utils/roomSession'
 import { useRoomTabSync } from '../hooks/useRoomTabSync'
 
 /**
  * RoomPage — main watch party room layout.
  *
- * Phase 3 Architecture:
- * - Recovers nickname from localStorage room session so duplicate tabs join seamlessly.
- * - Obtains fresh Clerk session token if authenticated; sends guestDeviceId for guests.
- * - Handles structured JOIN_ROOM acknowledgement (including BANNED_FROM_ROOM rejection).
- * - Coordinates immediate cross-tab eviction using BroadcastChannel.
- * - Updates roles, kicks, and participant lists using stable participantId.
+ * Duplicate Tab Takeover & Single-Active-Tab Architecture:
+ * - Each browser tab possesses a unique tabId (sessionStorage).
+ * - Only ONE tab per participant identity may be active in a room at any time.
+ * - Opening the same room in another tab enters the 'active_elsewhere' state (Google Meet-like "Switch here" gate).
+ * - Clicking "Switch here" triggers an authoritative server takeover preserving participantId, role, and host status.
+ * - Sockets from the previous active tab receive ROOM_TAKEN_OVER and navigate Home without clearing shared roomSession.
+ * - Kicks and bans are strictly room-scoped (RoomBlock model); kicked users are evicted and redirected Home.
  */
 export default function RoomPage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
   const { getToken, isSignedIn } = useAuth()
   const hasJoinedToastRef = useRef(false)
+  const joinedSuccessfullyInThisTabRef = useRef(false)
+  const executeJoinRef = useRef(null)
+
+  // Explicit join gate status:
+  // 'checking' | 'joining' | 'active_elsewhere' | 'switching' | 'joined' | 'error'
+  const [joinStatus, setJoinStatus] = useState('checking')
 
   const {
     room, currentUser, setRoom, setCurrentUser, setPrimaryConnection,
@@ -41,12 +50,17 @@ export default function RoomPage() {
 
   const { socket } = useSocketContext()
 
-  // Cross-tab local coordination (e.g. immediate eviction if another tab was kicked)
+  // Cross-tab local coordination using BroadcastChannel (optimization layer; socket remains authoritative)
   const { broadcastEvent } = useRoomTabSync({
     roomId,
     onKicked: () => {
       clearRoomSession(roomId)
       toast.error('You were removed from this room.')
+      resetRoom()
+      navigate('/')
+    },
+    onTakenOver: () => {
+      toast('Room switched to another tab.', { icon: '🔄' })
       resetRoom()
       navigate('/')
     },
@@ -75,7 +89,7 @@ export default function RoomPage() {
     if (!currentUser && roomId) {
       const storedSession = getRoomSession(roomId)
       if (storedSession && storedSession.username) {
-        // Recover nickname and initialize currentUser so tab can join automatically
+        // Recover nickname and initialize currentUser so tab can attempt join
         setCurrentUser({ username: storedSession.username, role: 'participant' })
       } else {
         // No prior session on this device -> redirect to landing page to enter nickname
@@ -151,6 +165,14 @@ export default function RoomPage() {
       navigate('/')
     }
 
+    const handleRoomTakenOver = () => {
+      // Switched to another tab: reset local React room state and navigate Home.
+      // Crucial: DO NOT call clearRoomSession(roomId) here because the active tab still needs it!
+      toast('Room switched to another tab.', { icon: '🔄' })
+      resetRoom()
+      navigate('/')
+    }
+
     const handleQueueSync = ({ queue }) => {
       if (queue) setQueue(queue)
     }
@@ -187,6 +209,7 @@ export default function RoomPage() {
     socket.on(EVENTS.ROLE_UPDATED, handleRoleUpdated)
     socket.on(EVENTS.PRIMARY_CONNECTION_CHANGED, handlePrimaryChanged)
     socket.on(EVENTS.KICKED, handleKicked)
+    socket.on(EVENTS.ROOM_TAKEN_OVER, handleRoomTakenOver)
     socket.on(EVENTS.QUEUE_SYNC, handleQueueSync)
     socket.on(EVENTS.PLAY, handlePlay)
     socket.on(EVENTS.PAUSE, handlePause)
@@ -195,24 +218,34 @@ export default function RoomPage() {
     socket.on(EVENTS.CHAT_MESSAGE, handleChatMessage)
     socket.on(EVENTS.ERROR, handleError)
 
-    // Execute join with fresh credentials & device identity
-    const handleJoin = async () => {
+    // Execute authoritative join with fresh credentials, tab identity, and device identity
+    const executeJoin = async (takeover = false) => {
       try {
         let clerkToken = null
         if (isSignedIn) {
           clerkToken = await getToken()
         }
         const guestDeviceId = getGuestDeviceId()
+        const tabId = getTabId()
 
         emitJoinRoom(socket, {
           roomId,
           username: currentUser.username,
           guestDeviceId,
           clerkToken,
+          tabId,
+          takeover,
         }, (res) => {
           if (!res) return
 
           if (res.success) {
+            joinedSuccessfullyInThisTabRef.current = true
+            setJoinStatus('joined')
+
+            if (res.takeover) {
+              broadcastEvent('ROOM_TAKEN_OVER')
+            }
+
             setRoomSession(roomId, { username: res.username })
             setCurrentUser({
               ...currentUser,
@@ -228,27 +261,48 @@ export default function RoomPage() {
               toast.success(`Joined "${room?.roomName || 'Party'}"!`)
             }
           } else {
-            if (res.code === 'BANNED_FROM_ROOM') {
+            if (res.code === 'ROOM_ACTIVE_ELSEWHERE') {
+              if (joinedSuccessfullyInThisTabRef.current) {
+                // This tab was previously joined, but room was switched elsewhere (e.g. reconnected after takeover)
+                toast('Room switched to another tab.', { icon: '🔄' })
+                resetRoom()
+                navigate('/')
+              } else {
+                // New duplicate tab opened while another tab is active
+                setJoinStatus('active_elsewhere')
+              }
+            } else if (res.code === 'BANNED_FROM_ROOM') {
               broadcastEvent('ROOM_KICKED')
               clearRoomSession(roomId)
               toast.error(res.message || 'You were removed from this room and cannot rejoin.')
               resetRoom()
               navigate('/')
             } else {
+              setJoinStatus('error')
               toast.error(res.message || 'Failed to join room.')
             }
           }
         })
       } catch (err) {
         console.error('Join error:', err)
+        setJoinStatus('error')
       }
     }
 
+    executeJoinRef.current = executeJoin
+
     if (socket.connected) {
-      handleJoin()
+      if (!joinedSuccessfullyInThisTabRef.current) {
+        setJoinStatus('joining')
+      }
+      executeJoin(false)
     }
 
-    socket.on('connect', handleJoin)
+    const onConnect = () => {
+      executeJoin(false)
+    }
+
+    socket.on('connect', onConnect)
 
     return () => {
       socket.off(EVENTS.USER_JOINED, handleUserJoined)
@@ -257,6 +311,7 @@ export default function RoomPage() {
       socket.off(EVENTS.ROLE_UPDATED, handleRoleUpdated)
       socket.off(EVENTS.PRIMARY_CONNECTION_CHANGED, handlePrimaryChanged)
       socket.off(EVENTS.KICKED, handleKicked)
+      socket.off(EVENTS.ROOM_TAKEN_OVER, handleRoomTakenOver)
       socket.off(EVENTS.QUEUE_SYNC, handleQueueSync)
       socket.off(EVENTS.PLAY, handlePlay)
       socket.off(EVENTS.PAUSE, handlePause)
@@ -264,14 +319,14 @@ export default function RoomPage() {
       socket.off(EVENTS.CHANGE_VIDEO, handleChangeVideo)
       socket.off(EVENTS.CHAT_MESSAGE, handleChatMessage)
       socket.off(EVENTS.ERROR, handleError)
-      socket.off('connect', handleJoin)
+      socket.off('connect', onConnect)
     }
   }, [socket, roomId, currentUser?.username, isSignedIn, getToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Resync room state when tab returns to focus
+  // Resync room state when tab returns to focus (only if successfully joined)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && socket && roomId) {
+      if (document.visibilityState === 'visible' && socket && roomId && joinStatus === 'joined') {
         emitSyncRequest(socket, { roomId })
       }
     }
@@ -280,8 +335,77 @@ export default function RoomPage() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [socket, roomId])
+  }, [socket, roomId, joinStatus])
 
+  // Handle "Switch here" action from RoomAlreadyOpen screen
+  const handleSwitchHere = () => {
+    if (!socket || !roomId || !currentUser?.username) return
+    setJoinStatus('switching')
+    if (executeJoinRef.current) {
+      executeJoinRef.current(true)
+    }
+  }
+
+  // 1. Room already open elsewhere -> Show dedicated Switch Here screen
+  if (joinStatus === 'active_elsewhere' || joinStatus === 'switching') {
+    return (
+      <RoomAlreadyOpen
+        roomId={roomId}
+        roomName={room?.roomName}
+        isSwitching={joinStatus === 'switching'}
+        onSwitch={handleSwitchHere}
+        onHome={() => navigate('/')}
+      />
+    )
+  }
+
+  // 2. Checking / joining loading gate (prevents mounting player/chat before join confirmation)
+  if (joinStatus === 'checking' || joinStatus === 'joining') {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#131315] text-[#e5e1e4] p-4 relative overflow-hidden">
+        <div className="absolute inset-0 z-0 flex items-center justify-center opacity-20 pointer-events-none">
+          <div className="w-[400px] h-[400px] bg-[#ffb3ad]/10 rounded-full blur-[140px]" />
+        </div>
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-[#ffb3ad] border-t-transparent rounded-full animate-spin" />
+          <p className="font-[Geist,sans-serif] text-[15px] font-medium text-[#e4beba]">
+            Checking room...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // 3. Error state
+  if (joinStatus === 'error') {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#131315] text-[#e5e1e4] p-4">
+        <div className="max-w-md w-full bg-[#1d1d20] border border-[#5b403e]/30 rounded-2xl p-6 text-center shadow-xl">
+          <h3 className="text-lg font-semibold text-[#ff5451] mb-2">Failed to join room</h3>
+          <p className="text-sm text-[#c9c5c8] mb-6">Could not connect to the watch party. Please try again or return home.</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => {
+                setJoinStatus('joining')
+                executeJoinRef.current?.(false)
+              }}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff5451] to-[#ffb3ad] text-[#131315] font-semibold text-sm cursor-pointer"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="px-5 py-2.5 rounded-xl bg-[#131315] border border-[#5b403e]/40 text-[#e5e1e4] text-sm cursor-pointer hover:bg-[#1d1d20]"
+            >
+              Back to Home
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 4. Joined successfully -> Render full watch room
   return (
     <div className="h-screen w-full overflow-hidden flex flex-col bg-[#131315] text-[#e5e1e4]">
       <RoomHeader />

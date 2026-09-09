@@ -29,6 +29,7 @@ export const EVENTS = {
   SYNC_STATE:                 'sync_state',
   ROLE_UPDATED:               'role_updated',
   KICKED:                     'kicked',
+  ROOM_TAKEN_OVER:            'room_taken_over',
   CHAT_MESSAGE:               'chat_message',
   ERROR:                      'error',
   QUEUE_SYNC:                 'queue_sync',
@@ -44,11 +45,13 @@ export const EVENTS = {
  * @param {string} payload.username
  * @param {string} [payload.guestDeviceId]
  * @param {string|null} [payload.clerkToken]
+ * @param {string|null} [payload.tabId]
+ * @param {boolean} [payload.takeover=false]
  * @param {Function} [callback] - Structured ack callback ({ success, participantId, role, isPrimaryConnection, code, message })
  */
-export function emitJoinRoom(socket, { roomId, username, guestDeviceId, clerkToken }, callback) {
+export function emitJoinRoom(socket, { roomId, username, guestDeviceId, clerkToken, tabId, takeover = false }, callback) {
   if (!socket) return
-  socket.emit(EVENTS.JOIN_ROOM, { roomId, username, guestDeviceId, clerkToken }, callback)
+  socket.emit(EVENTS.JOIN_ROOM, { roomId, username, guestDeviceId, clerkToken, tabId, takeover }, callback)
 }
 
 export function emitLeaveRoom(socket, { roomId }) {
