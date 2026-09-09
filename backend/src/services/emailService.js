@@ -34,22 +34,49 @@ function checkSmtpConfig() {
   return Boolean(host && user && pass)
 }
 
+const util = require('util')
+const dnsLookup = util.promisify(dns.lookup)
+
+/**
+ * Resolves a hostname directly to its IPv4 address via OS getaddrinfo (family 4).
+ * This completely prevents Nodemailer's internal resolver from picking an unreachable
+ * IPv6 route on residential ISPs with broken IPv6 peering.
+ */
+async function resolveIPv4Host(hostname) {
+  try {
+    const result = await dnsLookup(hostname, { family: 4 })
+    if (result && result.address) {
+      return result.address
+    }
+  } catch (err) {
+    // If resolution fails, fallback to hostname
+  }
+  return hostname
+}
+
 /**
  * Creates a Nodemailer transporter instance with specified port, security, and timeouts.
+ * Bypasses dropped IPv6 routing by resolving direct IPv4 address and setting TLS SNI servername.
  */
-function createTransporter(port, secure) {
+async function createTransporter(port, secure) {
   const host = (process.env.SMTP_HOST || '').toLowerCase()
   const isGmail = host.includes('gmail')
   const actualHost = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost')
 
+  // Resolve direct IPv4 address
+  const ipHost = await resolveIPv4Host(actualHost)
+
   return nodemailer.createTransport({
-    host: actualHost,
+    host: ipHost,
     port,
     secure,
-    family: 4, // Force IPv4 to prevent hanging on dropped IPv6 routes
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
+    },
+    tls: {
+      // Ensure TLS certificate matches actual hostname (e.g. smtp.gmail.com)
+      servername: actualHost,
     },
     connectionTimeout: 12000,
     greetingTimeout: 12000,
@@ -74,31 +101,43 @@ function getTransporter() {
     ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
     : (port === 465)
 
-  return createTransporter(port, secure)
+  return {
+    verify: verifySmtp,
+    sendMail: (mailOptions) => sendRoomInvite({
+      to: mailOptions.to,
+      roomName: 'Watch Room',
+      roomId: 'ROOM',
+      inviterName: 'Host',
+    })
+  }
 }
 
 /**
  * Non-blocking startup diagnostic check.
  * Verifies SMTP connection without blocking server launch.
  */
-function verifySmtp() {
+async function verifySmtp() {
   if (!checkSmtpConfig()) {
     logInvite('SMTP not configured. Email invitations disabled.')
-    return Promise.resolve(false)
+    return false
   }
 
-  const transport = getTransporter()
-  if (!transport) return Promise.resolve(false)
-
-  return transport.verify()
-    .then(() => {
-      logInvite('SMTP connection verified successfully.')
+  try {
+    const transport = await createTransporter(465, true)
+    await transport.verify()
+    logInvite('SMTP connection verified successfully over port 465.')
+    return true
+  } catch (err) {
+    try {
+      const fallback = await createTransporter(587, false)
+      await fallback.verify()
+      logInvite('SMTP connection verified successfully over fallback port 587.')
       return true
-    })
-    .catch((err) => {
-      logInvite(`SMTP startup verification warning: ${err.message || 'Unknown connection error'}`)
+    } catch (fallbackErr) {
+      logInvite(`SMTP startup verification warning: ${err.message || fallbackErr.message}`)
       return false
-    })
+    }
+  }
 }
 
 /**
@@ -250,7 +289,7 @@ You do not need an account to join. Simply open the link and choose a display na
   let lastError = null
   // Attempt 1: Primary port
   try {
-    const transport = createTransporter(primaryPort, primarySecure)
+    const transport = await createTransporter(primaryPort, primarySecure)
     const result = await transport.sendMail(mailOptions)
     logInvite(`SUCCESS: Invitation delivered to "${to}" via port ${primaryPort} (messageId: ${result.messageId})`)
     return { success: true, messageId: result.messageId }
@@ -261,7 +300,7 @@ You do not need an account to join. Simply open the link and choose a display na
 
   // Attempt 2: Fallback port
   try {
-    const fallbackTransport = createTransporter(fallbackPort, fallbackSecure)
+    const fallbackTransport = await createTransporter(fallbackPort, fallbackSecure)
     const result = await fallbackTransport.sendMail(mailOptions)
     logInvite(`SUCCESS: Invitation delivered to "${to}" via fallback port ${fallbackPort} (messageId: ${result.messageId})`)
     return { success: true, messageId: result.messageId }
