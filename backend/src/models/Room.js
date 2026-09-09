@@ -98,6 +98,7 @@ const roomSchema = new mongoose.Schema({
   },
   participants:        [participantSchema],
   blockedParticipants: [blockedParticipantSchema],
+  membershipVersion:   { type: Number, default: 0 },
   videoState:          { type: videoStateSchema, default: () => ({}) },
   queue:               [queueItemSchema],
   chatMessages:        [chatMessageSchema],

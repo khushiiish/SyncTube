@@ -19,6 +19,7 @@ const initialState = {
   room: null,
   currentUser: null,
   participants: [],
+  membershipVersion: 0,
   videoState: {
     videoId: null,
     isPlaying: false,
@@ -49,6 +50,53 @@ function roomReducer(state, action) {
 
     case 'SET_PARTICIPANTS':
       return { ...state, participants: action.payload }
+
+    case 'APPLY_PARTICIPANTS_SYNC': {
+      const { participants = [], hostParticipantId, membershipVersion = 0 } = action.payload || {}
+
+      // Ignore stale snapshots if incoming version is older than what we already applied
+      if (typeof membershipVersion === 'number' && membershipVersion < (state.membershipVersion || 0)) {
+        return state
+      }
+
+      // Defensive canonical host normalization: guarantee at most one host matching hostParticipantId
+      const normalizedParticipants = participants.map(p => {
+        const isCanonicalHost = hostParticipantId && p.participantId === hostParticipantId
+        if (isCanonicalHost && p.role !== 'host') {
+          return { ...p, role: 'host' }
+        }
+        if (!isCanonicalHost && p.role === 'host') {
+          return { ...p, role: 'participant' }
+        }
+        return p
+      })
+
+      // Authoritatively sync currentUser role from the new participants array
+      let updatedCurrentUser = state.currentUser
+      if (state.currentUser) {
+        const myPart = normalizedParticipants.find(p =>
+          (state.currentUser.participantId && p.participantId === state.currentUser.participantId) ||
+          (state.currentUser.socketId && p.socketId === state.currentUser.socketId)
+        )
+        if (myPart && myPart.role !== state.currentUser.role) {
+          updatedCurrentUser = { ...state.currentUser, role: myPart.role }
+        }
+      }
+
+      // Authoritatively sync room.hostParticipantId
+      let updatedRoom = state.room
+      if (state.room && hostParticipantId && state.room.hostParticipantId !== hostParticipantId) {
+        updatedRoom = { ...state.room, hostParticipantId }
+      }
+
+      return {
+        ...state,
+        participants: normalizedParticipants,
+        membershipVersion,
+        currentUser: updatedCurrentUser,
+        room: updatedRoom,
+      }
+    }
 
     case 'ADD_PARTICIPANT': {
       const targetId = action.payload.participantId || action.payload.socketId
@@ -123,6 +171,7 @@ export function RoomProvider({ children }) {
   const setCurrentUser = useCallback((user) => dispatch({ type: 'SET_CURRENT_USER', payload: user }), [])
   const setPrimaryConnection = useCallback((isPrimary) => dispatch({ type: 'SET_PRIMARY_CONNECTION', payload: isPrimary }), [])
   const setParticipants = useCallback((list) => dispatch({ type: 'SET_PARTICIPANTS', payload: list }), [])
+  const applyParticipantsSync = useCallback((payload) => dispatch({ type: 'APPLY_PARTICIPANTS_SYNC', payload }), [])
   const addParticipant = useCallback((p) => dispatch({ type: 'ADD_PARTICIPANT', payload: p }), [])
   const removeParticipant = useCallback((id) => dispatch({ type: 'REMOVE_PARTICIPANT', payload: id }), [])
   const updateParticipantRole = useCallback((data) => dispatch({ type: 'UPDATE_PARTICIPANT_ROLE', payload: data }), [])
@@ -142,6 +191,7 @@ export function RoomProvider({ children }) {
       setCurrentUser,
       setPrimaryConnection,
       setParticipants,
+      applyParticipantsSync,
       addParticipant,
       removeParticipant,
       updateParticipantRole,

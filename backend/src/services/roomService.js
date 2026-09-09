@@ -5,6 +5,64 @@ const { generateRoomId } = require('../utils/generateRoomId')
 const { nanoid } = require('nanoid')
 const crypto = require('crypto')
 const voiceCleanupService = require('./voiceCleanupService')
+const { withRoomLock } = require('./roomMutationLock')
+
+/**
+ * Enforces that at most ONE participant in the room has role === 'host',
+ * keeping room.hostParticipantId and participant roles strictly in lockstep.
+ *
+ * @param {Object} room - Mongoose room document
+ * @returns {Object} room
+ */
+function enforceSingleHostInvariant(room) {
+  if (!room || !Array.isArray(room.participants) || room.participants.length === 0) {
+    return room
+  }
+
+  const hosts = room.participants.filter(p => p.role === 'host')
+
+  if (room.hostParticipantId) {
+    const canonicalHost = room.findParticipantById(room.hostParticipantId)
+    if (canonicalHost) {
+      // Canonical host must have role 'host'
+      canonicalHost.role = 'host'
+      // Demote all other participants who claim to be host
+      let repaired = false
+      room.participants.forEach(p => {
+        if (p.participantId !== room.hostParticipantId && p.role === 'host') {
+          p.role = 'participant'
+          repaired = true
+        }
+      })
+      if (repaired) {
+        console.warn(`[RoomInvariant] Repaired duplicate host roles in room ${room.roomId}; canonical host is ${room.hostParticipantId}`)
+      }
+      return room
+    }
+  }
+
+  // If hostParticipantId is missing or points to a non-existent participant:
+  if (hosts.length === 1) {
+    // Exactly one host exists: repair hostParticipantId
+    room.hostParticipantId = hosts[0].participantId
+    room.hostSocketId = hosts[0].primarySocketId || hosts[0].socketIds?.[0] || null
+  } else if (hosts.length > 1) {
+    // Multiple hosts exist and hostParticipantId was invalid: pick earliest joined deterministically
+    const sortedHosts = [...hosts].sort((a, b) => new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0))
+    const canonical = sortedHosts[0]
+    room.hostParticipantId = canonical.participantId
+    room.hostSocketId = canonical.primarySocketId || canonical.socketIds?.[0] || null
+
+    room.participants.forEach(p => {
+      if (p.participantId !== canonical.participantId && p.role === 'host') {
+        p.role = 'participant'
+      }
+    })
+    console.warn(`[RoomInvariant] Repaired ${hosts.length} duplicate hosts in room ${room.roomId}; resolved to earliest host ${canonical.participantId}`)
+  }
+
+  return room
+}
 
 /**
  * roomService — business logic layer.
@@ -239,6 +297,9 @@ async function joinOrAttachParticipant(roomId, {
     room.hostSocketId = socketId
   }
 
+  enforceSingleHostInvariant(room)
+  room.membershipVersion = (room.membershipVersion || 0) + 1
+
   await room.save()
 
   return {
@@ -314,42 +375,47 @@ async function removeSocketFromParticipant(roomId, socketId) {
  * @returns {Promise<{ room: Object|null, leavingParticipant: Object|null, newHost: Object|null }>}
  */
 async function finalizeParticipantLeave(roomId, participantId) {
-  const room = await Room.findOne({ roomId: roomId.toUpperCase() })
-  if (!room) return { room: null, leavingParticipant: null, newHost: null }
+  return await withRoomLock(roomId, async () => {
+    const room = await Room.findOne({ roomId: roomId.toUpperCase() })
+    if (!room) return { room: null, leavingParticipant: null, newHost: null }
 
-  const leavingParticipant = room.findParticipantById(participantId)
-  if (!leavingParticipant) return { room, leavingParticipant: null, newHost: null }
+    const leavingParticipant = room.findParticipantById(participantId)
+    if (!leavingParticipant) return { room, leavingParticipant: null, newHost: null }
 
-  // Concurrency guard: if participant reconnected with active sockets, do not remove
-  if (leavingParticipant.socketIds && leavingParticipant.socketIds.length > 0) {
-    leavingParticipant.status = 'online'
+    // Concurrency guard: if participant reconnected with active sockets, do not remove
+    if (leavingParticipant.socketIds && leavingParticipant.socketIds.length > 0) {
+      leavingParticipant.status = 'online'
+      await room.save()
+      return { room, leavingParticipant, newHost: null, cancelled: true }
+    }
+
+    // Remove participant from room
+    room.participants = room.participants.filter(p => p.participantId !== participantId)
+
+    let newHost = null
+
+    // Transfer host if leaving participant was host
+    if ((leavingParticipant.role === 'host' || room.hostParticipantId === participantId) && room.participants.length > 0) {
+      room.participants[0].role = 'host'
+      room.hostParticipantId = room.participants[0].participantId
+      room.hostSocketId = room.participants[0].primarySocketId || room.participants[0].socketIds?.[0] || null
+      newHost = room.participants[0]
+    }
+
+    // Delete empty rooms
+    if (room.participants.length === 0) {
+      await voiceCleanupService.cleanupRoomAssets(room.roomId)
+      await roomBlockService.removeRoomBlocks(room.roomId)
+      await Room.deleteOne({ roomId: room.roomId })
+      return { room: null, leavingParticipant, newHost: null }
+    }
+
+    enforceSingleHostInvariant(room)
+    room.membershipVersion = (room.membershipVersion || 0) + 1
+
     await room.save()
-    return { room, leavingParticipant, newHost: null, cancelled: true }
-  }
-
-  // Remove participant from room
-  room.participants = room.participants.filter(p => p.participantId !== participantId)
-
-  let newHost = null
-
-  // Transfer host if leaving participant was host
-  if ((leavingParticipant.role === 'host' || room.hostParticipantId === participantId) && room.participants.length > 0) {
-    room.participants[0].role = 'host'
-    room.hostParticipantId = room.participants[0].participantId
-    room.hostSocketId = room.participants[0].primarySocketId || room.participants[0].socketIds?.[0] || null
-    newHost = room.participants[0]
-  }
-
-  // Delete empty rooms
-  if (room.participants.length === 0) {
-    await voiceCleanupService.cleanupRoomAssets(room.roomId)
-    await roomBlockService.removeRoomBlocks(room.roomId)
-    await Room.deleteOne({ roomId: room.roomId })
-    return { room: null, leavingParticipant, newHost: null }
-  }
-
-  await room.save()
-  return { room, leavingParticipant, newHost }
+    return { room, leavingParticipant, newHost }
+  })
 }
 
 /**
@@ -391,6 +457,16 @@ async function blockAndRemoveParticipant(roomId, targetParticipantId, blockedByP
   // 2. Remove participant from Room
   room.participants = room.participants.filter(p => p.participantId !== targetParticipantId)
 
+  // Transfer host if kicked participant was host
+  if (room.hostParticipantId === targetParticipantId && room.participants.length > 0) {
+    room.participants[0].role = 'host'
+    room.hostParticipantId = room.participants[0].participantId
+    room.hostSocketId = room.participants[0].primarySocketId || room.participants[0].socketIds?.[0] || null
+  }
+
+  enforceSingleHostInvariant(room)
+  room.membershipVersion = (room.membershipVersion || 0) + 1
+
   await room.save()
   return { room, target, targetSockets }
 }
@@ -415,30 +491,78 @@ async function updateVideoState(roomId, videoStateUpdates) {
 }
 
 /**
- * Update a participant's role (by stable participantId).
+ * Atomically transfers host role from current host to target participant in a single locked mutation.
+ *
+ * @param {string} roomId
+ * @param {string} currentHostParticipantId
+ * @param {string} targetParticipantId
+ * @returns {Promise<{ room: Object, oldHost: Object|null, newHost: Object }>}
  */
-async function updateParticipantRole(roomId, targetParticipantId, role) {
-  const room = await Room.findOne({ roomId: roomId.toUpperCase() })
-  if (!room) throw new Error('Room not found.')
+async function transferHost(roomId, currentHostParticipantId, targetParticipantId) {
+  return await withRoomLock(roomId, async () => {
+    const room = await Room.findOne({ roomId: roomId.toUpperCase() })
+    if (!room) throw new Error('Room not found.')
 
-  const participant = room.findParticipantById(targetParticipantId)
-  if (!participant) throw new Error('Participant not found.')
+    const target = room.findParticipantById(targetParticipantId)
+    if (!target) throw new Error('Target participant not found.')
 
-  participant.role = role
+    const oldHost = (currentHostParticipantId ? room.findParticipantById(currentHostParticipantId) : null) ||
+      room.participants.find(p => p.role === 'host' && p.participantId !== targetParticipantId) || null
 
-  if (role === 'host') {
-    // Demote any previous host
+    if (currentHostParticipantId && targetParticipantId === currentHostParticipantId) {
+      return { room, oldHost: target, newHost: target }
+    }
+
+    // Demote all participants whose role is 'host'
     room.participants.forEach(p => {
-      if (p.participantId !== targetParticipantId && p.role === 'host') {
+      if (p.role === 'host') {
         p.role = 'participant'
       }
     })
-    room.hostParticipantId = targetParticipantId
-    room.hostSocketId = participant.primarySocketId || participant.socketIds?.[0] || null
-  }
 
-  await room.save()
-  return { room, participant }
+    // Promote target
+    target.role = 'host'
+    room.hostParticipantId = target.participantId
+    room.hostSocketId = target.primarySocketId || target.socketIds?.[0] || null
+
+    enforceSingleHostInvariant(room)
+    room.membershipVersion = (room.membershipVersion || 0) + 1
+
+    await room.save()
+    return { room, oldHost, newHost: target }
+  })
+}
+
+/**
+ * Update a participant's role (by stable participantId).
+ */
+async function updateParticipantRole(roomId, targetParticipantId, role) {
+  return await withRoomLock(roomId, async () => {
+    const room = await Room.findOne({ roomId: roomId.toUpperCase() })
+    if (!room) throw new Error('Room not found.')
+
+    const participant = room.findParticipantById(targetParticipantId)
+    if (!participant) throw new Error('Participant not found.')
+
+    participant.role = role
+
+    if (role === 'host') {
+      // Demote any previous host
+      room.participants.forEach(p => {
+        if (p.participantId !== targetParticipantId && p.role === 'host') {
+          p.role = 'participant'
+        }
+      })
+      room.hostParticipantId = targetParticipantId
+      room.hostSocketId = participant.primarySocketId || participant.socketIds?.[0] || null
+    }
+
+    enforceSingleHostInvariant(room)
+    room.membershipVersion = (room.membershipVersion || 0) + 1
+
+    await room.save()
+    return { room, participant }
+  })
 }
 
 /**
@@ -638,6 +762,8 @@ module.exports = {
   removeParticipant,
   updateVideoState,
   updateParticipantRole,
+  transferHost,
+  enforceSingleHostInvariant,
   addToQueue,
   removeFromQueue,
   clearQueue,

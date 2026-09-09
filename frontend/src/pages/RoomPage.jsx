@@ -42,7 +42,7 @@ export default function RoomPage() {
 
   const {
     room, currentUser, setRoom, setCurrentUser, setPrimaryConnection,
-    setParticipants, setVideoState, addParticipant,
+    applyParticipantsSync, setVideoState, addParticipant,
     removeParticipant, updateParticipantRole,
     setChatMessages, addChatMessage, resetRoom, videoState, participants,
     setQueue,
@@ -120,6 +120,7 @@ export default function RoomPage() {
 
     const handleSyncState = ({
       participants: parts,
+      membershipVersion,
       videoState: vs,
       room: r,
       queue,
@@ -128,7 +129,13 @@ export default function RoomPage() {
       currentUserParticipantId,
       isPrimaryConnection,
     }) => {
-      if (parts) setParticipants(parts)
+      if (parts) {
+        applyParticipantsSync({
+          participants: parts,
+          hostParticipantId: r?.hostParticipantId,
+          membershipVersion: membershipVersion || 0,
+        })
+      }
       if (vs) setVideoState(vs)
       if (queue) setQueue(queue)
       if (cms) setChatMessages(cms)
@@ -145,6 +152,10 @@ export default function RoomPage() {
             : currentUser.isPrimaryConnection,
         })
       }
+    }
+
+    const handleParticipantsSync = ({ participants: parts, hostParticipantId, membershipVersion }) => {
+      applyParticipantsSync({ participants: parts, hostParticipantId, membershipVersion })
     }
 
     const handleRoleUpdated = ({ participantId, socketId, role, username }) => {
@@ -206,6 +217,7 @@ export default function RoomPage() {
     socket.on(EVENTS.USER_JOINED, handleUserJoined)
     socket.on(EVENTS.USER_LEFT, handleUserLeft)
     socket.on(EVENTS.SYNC_STATE, handleSyncState)
+    socket.on(EVENTS.PARTICIPANTS_SYNC, handleParticipantsSync)
     socket.on(EVENTS.ROLE_UPDATED, handleRoleUpdated)
     socket.on(EVENTS.PRIMARY_CONNECTION_CHANGED, handlePrimaryChanged)
     socket.on(EVENTS.KICKED, handleKicked)
@@ -308,6 +320,7 @@ export default function RoomPage() {
       socket.off(EVENTS.USER_JOINED, handleUserJoined)
       socket.off(EVENTS.USER_LEFT, handleUserLeft)
       socket.off(EVENTS.SYNC_STATE, handleSyncState)
+      socket.off(EVENTS.PARTICIPANTS_SYNC, handleParticipantsSync)
       socket.off(EVENTS.ROLE_UPDATED, handleRoleUpdated)
       socket.off(EVENTS.PRIMARY_CONNECTION_CHANGED, handlePrimaryChanged)
       socket.off(EVENTS.KICKED, handleKicked)

@@ -30,6 +30,7 @@ export const EVENTS = {
   ROLE_UPDATED:               'role_updated',
   KICKED:                     'kicked',
   ROOM_TAKEN_OVER:            'room_taken_over',
+  PARTICIPANTS_SYNC:          'participants_sync',
   CHAT_MESSAGE:               'chat_message',
   ERROR:                      'error',
   QUEUE_SYNC:                 'queue_sync',

@@ -44,6 +44,7 @@ const EVENTS = {
   ROLE_UPDATED:               'role_updated',
   KICKED:                     'kicked',
   ROOM_TAKEN_OVER:            'room_taken_over',
+  PARTICIPANTS_SYNC:          'participants_sync',
   CHAT_MESSAGE:               'chat_message',
   ERROR:                      'error',
   PRIMARY_CONNECTION_CHANGED: 'primary_connection_changed',
@@ -56,6 +57,22 @@ const EVENTS = {
 function isSocketInRoom(socket, roomId) {
   if (!socket || !socket.roomId || !roomId) return false
   return socket.roomId.toUpperCase() === roomId.toUpperCase()
+}
+
+/**
+ * Emits an authoritative participant and host snapshot to all room connections.
+ * Uses io.to(roomId) so the initiating host/admin also receives the update immediately.
+ *
+ * @param {import('socket.io').Server} io
+ * @param {Object} room
+ */
+function emitParticipantsSync(io, room) {
+  if (!io || !room || !room.roomId) return
+  io.to(room.roomId).emit(EVENTS.PARTICIPANTS_SYNC, {
+    participants: room.toSafeParticipants(),
+    hostParticipantId: room.hostParticipantId,
+    membershipVersion: room.membershipVersion || 0,
+  })
 }
 
 /**
@@ -168,11 +185,12 @@ function registerRoomHandlers(socket, io) {
         }
         socket.join(room.roomId)
 
-        // 5. Broadcast user_joined ONLY if this is a genuinely new participant
+        // 5. Broadcast user_joined and authoritative participants_sync if this is a genuinely new participant
         if (isNewParticipant) {
           socket.to(room.roomId).emit(EVENTS.USER_JOINED, {
             participant: room.toSafeParticipant(participant),
           })
+          emitParticipantsSync(io, room)
           io.emit('rooms_updated')
         }
 
@@ -185,6 +203,7 @@ function registerRoomHandlers(socket, io) {
             hostSocketId:      room.hostSocketId,
           },
           participants:             room.toSafeParticipants(),
+          membershipVersion:        room.membershipVersion || 0,
           videoState:               room.videoState,
           queue:                    room.queue,
           chatMessages:             room.toSafeChatMessages(),
@@ -264,6 +283,10 @@ function registerRoomHandlers(socket, io) {
 
       const { leavingParticipant, newHost } = leaveRes
 
+      if (leaveRes.room) {
+        emitParticipantsSync(io, leaveRes.room)
+      }
+
       if (leavingParticipant) {
         io.to(targetRoomId).emit(EVENTS.USER_LEFT, {
           participantId: leavingParticipant.participantId,
@@ -321,6 +344,10 @@ function registerRoomHandlers(socket, io) {
           if (!leaveRes || leaveRes.cancelled) return
 
           const { leavingParticipant, newHost } = leaveRes
+
+          if (leaveRes.room) {
+            emitParticipantsSync(io, leaveRes.room)
+          }
 
           if (leavingParticipant) {
             io.to(roomId).emit(EVENTS.USER_LEFT, {
@@ -501,7 +528,9 @@ function registerRoomHandlers(socket, io) {
         return
       }
 
-      const { participant } = await roomService.updateParticipantRole(room.roomId, participantId, role)
+      const { room: updatedRoom, participant } = await roomService.updateParticipantRole(room.roomId, participantId, role)
+
+      emitParticipantsSync(io, updatedRoom)
 
       io.to(room.roomId).emit(EVENTS.ROLE_UPDATED, {
         participantId: participant.participantId,
@@ -522,51 +551,57 @@ function registerRoomHandlers(socket, io) {
     try {
       if (!isSocketInRoom(socket, roomId)) return
 
-      const room = await roomService.findRoom(roomId)
-      if (!room) return
-      if (!room.hasRoleForSocket(socket.id, 'host')) {
-        socket.emit(EVENTS.ERROR, { message: 'Only the host can transfer host role.' })
-        return
-      }
+      await withRoomLock(roomId, async () => {
+        const room = await roomService.findRoom(roomId)
+        if (!room) return
+        if (!room.hasRoleForSocket(socket.id, 'host')) {
+          socket.emit(EVENTS.ERROR, { message: 'Only the host can transfer host role.' })
+          return
+        }
 
-      const currentHost = room.findParticipantBySocket(socket.id)
-      let newHostId = targetParticipantId
-      if (!newHostId && targetSocketId) {
-        newHostId = room.findParticipantBySocket(targetSocketId)?.participantId
-      }
+        const currentHost = room.findParticipantBySocket(socket.id)
+        let newHostId = targetParticipantId
+        if (!newHostId && targetSocketId) {
+          newHostId = room.findParticipantBySocket(targetSocketId)?.participantId
+        }
 
-      if (!newHostId || newHostId === currentHost?.participantId) {
-        socket.emit(EVENTS.ERROR, { message: 'Cannot transfer host to yourself or unknown participant.' })
-        return
-      }
+        if (!newHostId || newHostId === currentHost?.participantId) {
+          socket.emit(EVENTS.ERROR, { message: 'Cannot transfer host to yourself or unknown participant.' })
+          return
+        }
 
-      // Promote new host
-      const { participant: newHost } = await roomService.updateParticipantRole(room.roomId, newHostId, 'host')
+        // Atomically transfer host in ONE database mutation under room lock
+        const { room: updatedRoom, oldHost, newHost } = await roomService.transferHost(
+          room.roomId,
+          currentHost?.participantId,
+          newHostId
+        )
 
-      // Demote old host to participant
-      if (currentHost) {
-        await roomService.updateParticipantRole(room.roomId, currentHost.participantId, 'participant')
-      }
+        // 1. Authoritative snapshot to ALL room sockets (prevents duplicate host UI)
+        emitParticipantsSync(io, updatedRoom)
 
-      // Notify room of both updates
-      io.to(room.roomId).emit(EVENTS.ROLE_UPDATED, {
-        participantId: newHost.participantId,
-        role:          'host',
-        username:      newHost.username,
-      })
-
-      if (currentHost) {
+        // 2. Informational events for toasts / badges
         io.to(room.roomId).emit(EVENTS.ROLE_UPDATED, {
-          participantId: currentHost.participantId,
-          role:          'participant',
-          username:      currentHost.username,
+          participantId: newHost.participantId,
+          role:          'host',
+          username:      newHost.username,
         })
-      }
 
-      // If new host has an active primary socket, notify them
-      if (newHost.primarySocketId) {
-        io.to(newHost.primarySocketId).emit(EVENTS.PRIMARY_CONNECTION_CHANGED, { isPrimary: true })
-      }
+        if (oldHost) {
+          io.to(room.roomId).emit(EVENTS.ROLE_UPDATED, {
+            participantId: oldHost.participantId,
+            role:          'participant',
+            username:      oldHost.username,
+          })
+        }
+
+        // If new host has an active primary socket, notify them
+        if (newHost.primarySocketId) {
+          io.to(newHost.primarySocketId).emit(EVENTS.PRIMARY_CONNECTION_CHANGED, { isPrimary: true })
+        }
+
+        io.emit('rooms_updated')
+      })
     } catch (err) {
       console.error('[Socket] transfer_host error:', err.message)
       socket.emit(EVENTS.ERROR, { message: err.message })
@@ -627,8 +662,11 @@ function registerRoomHandlers(socket, io) {
           }
         })
 
-        // 2. Notify all remaining participants exactly once
-        socket.to(room.roomId).emit(EVENTS.USER_LEFT, {
+        // 2. Authoritative participant snapshot to ALL remaining room sockets (including host!)
+        emitParticipantsSync(io, result.room)
+
+        // 3. Notify remaining participants (informational toast)
+        io.to(room.roomId).emit(EVENTS.USER_LEFT, {
           participantId: target.participantId,
           username:      target.username,
         })
@@ -1016,6 +1054,10 @@ function registerRoomHandlers(socket, io) {
   socket.on(EVENTS.SEND_EMAIL_INVITE, async ({ roomId, recipientEmail }, callback) => {
     const ack = typeof callback === 'function' ? callback : () => {}
 
+    let normalizedEmail = null
+    let resolvedRoomId = null
+    let rateLimitRecorded = false
+
     try {
       if (!roomId || typeof roomId !== 'string') {
         return ack({ success: false, code: 'INVALID_ROOM', message: 'Room ID is required.' })
@@ -1030,16 +1072,18 @@ function registerRoomHandlers(socket, io) {
       }
 
       // 1. Email format validation
-      const { valid, normalizedEmail, error: emailError } = validateEmail(recipientEmail)
+      const { valid, normalizedEmail: validEmail, error: emailError } = validateEmail(recipientEmail)
       if (!valid) {
         return ack({ success: false, code: 'INVALID_EMAIL', message: emailError || 'Please enter a valid email address.' })
       }
+      normalizedEmail = validEmail
 
       // 2. Fetch room from database
       const room = await roomService.findRoom(roomId)
       if (!room) {
         return ack({ success: false, code: 'ROOM_NOT_FOUND', message: 'Room not found or has expired.' })
       }
+      resolvedRoomId = room.roomId
 
       // 3. Socket membership authorization: verify connected socket belongs to an active participant
       const participant = room.findParticipantBySocket(socket.id)
@@ -1057,6 +1101,7 @@ function registerRoomHandlers(socket, io) {
           message: rateLimitCheck.message || 'Too many invitations. Please wait before trying again.',
         })
       }
+      rateLimitRecorded = true
 
       // 5. Dispatch email with server-authoritative room and inviter details
       const result = await emailService.sendRoomInvite({
@@ -1075,11 +1120,11 @@ function registerRoomHandlers(socket, io) {
       console.warn(`[Socket] send_email_invite error for socket ${socket.id} [${err.code || 'ERROR'}]:`, err.message)
 
       // Roll back cooldown and attempt counter so user isn't locked out after delivery failure
-      try {
-        if (room?.roomId && normalizedEmail) {
-          rollbackInvite(socket.id, room.roomId, normalizedEmail)
-        }
-      } catch (_) {}
+      if (rateLimitRecorded && resolvedRoomId && normalizedEmail) {
+        try {
+          rollbackInvite(socket.id, resolvedRoomId, normalizedEmail)
+        } catch (_) {}
+      }
 
       return ack({
         success: false,

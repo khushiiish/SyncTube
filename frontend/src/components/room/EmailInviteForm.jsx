@@ -103,28 +103,32 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
         })
       } else {
         // Map backend error codes to friendly user-facing messages
-        let msg = response?.message
+        let msg
         switch (response?.code) {
           case 'SMTP_CONFIG_ERROR':
-            msg = 'Email service is not configured yet.'
+            msg = 'Email invitations are not configured.'
             break
           case 'SMTP_AUTH_ERROR':
-            msg = 'Email account authentication failed. Check the SMTP credentials.'
-            break
+          case 'SMTP_DNS_ERROR':
           case 'SMTP_NETWORK_ERROR':
-            msg = 'Could not connect to the email server.'
-            break
           case 'SMTP_TIMEOUT':
-            msg = response?.message || 'The email server connection timed out.'
+          case 'EMAIL_SENDER_REJECTED':
+            msg = 'Email invitations are temporarily unavailable.'
             break
           case 'SMTP_TLS_ERROR':
-            msg = 'Secure connection to the email server failed.'
+            msg = 'Email service could not establish a secure connection.'
             break
           case 'EMAIL_REJECTED':
-            msg = 'The email server rejected this recipient address.'
+            msg = 'This email address was rejected by the mail server.'
+            break
+          case 'SMTP_TEMPORARY_FAILURE':
+            msg = 'Email service is busy. Please try again shortly.'
+            break
+          case 'SMTP_PROVIDER_LIMIT':
+            msg = 'Email sending is temporarily unavailable.'
             break
           case 'RATE_LIMIT_EXCEEDED':
-            msg = 'Too many invitations. Please wait before trying again.'
+            msg = 'Too many invitations. Please try again later.'
             break
           case 'UNAUTHORIZED':
             msg = 'You must be an active room participant to send invitations.'
@@ -133,7 +137,7 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
             msg = response?.message || 'Please enter a valid email address.'
             break
           default:
-            msg = msg || 'Could not send invitation. Please try again later.'
+            msg = 'Could not send invitation. Please try again later.'
             break
         }
         setError(msg)

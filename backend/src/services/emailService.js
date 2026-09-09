@@ -1,11 +1,5 @@
-const dns = require('dns')
 const nodemailer = require('nodemailer')
 const { escapeHtml } = require('../utils/escapeHtml')
-
-// Prioritize IPv4 DNS lookup to prevent 30s IPv6 timeout on residential/ISP dual-stack networks
-if (dns.setDefaultResultOrder) {
-  dns.setDefaultResultOrder('ipv4first')
-}
 
 // Single cached transporter instance and configuration signature
 let cachedTransporter = null
@@ -51,7 +45,19 @@ function getSmtpConfig() {
   if (!pass) missing.push('SMTP_PASS')
   if (!rawPort || isNaN(port) || port <= 0 || port > 65535) missing.push('SMTP_PORT')
 
-  const isValid = missing.length === 0
+  // Gmail port and secure mode compatibility validation
+  let invalidGmailPair = false
+  if (host.toLowerCase().includes('gmail')) {
+    if (port === 465 && !secure) {
+      invalidGmailPair = true
+      missing.push('Invalid Gmail configuration: Port 465 requires SMTP_SECURE=true')
+    } else if (port === 587 && secure) {
+      invalidGmailPair = true
+      missing.push('Invalid Gmail configuration: Port 587 requires SMTP_SECURE=false')
+    }
+  }
+
+  const isValid = missing.length === 0 && !invalidGmailPair
 
   return {
     host,
@@ -64,6 +70,7 @@ function getSmtpConfig() {
     debug,
     isValid,
     missing,
+    invalidGmailPair,
   }
 }
 
@@ -96,12 +103,12 @@ function getTransporter() {
 
   // Configuration sanity warnings
   if (config.port === 465 && !config.secure) {
-    console.warn('[Mail] Warning: Port 465 typically requires SMTP_SECURE=true (SSL/TLS).')
+    console.warn('[Mail] Warning: Port 465 requires SMTP_SECURE=true (SSL/TLS).')
   } else if (config.port === 587 && config.secure) {
-    console.warn('[Mail] Warning: Port 587 typically requires SMTP_SECURE=false (STARTTLS).')
+    console.warn('[Mail] Warning: Port 587 requires SMTP_SECURE=false (STARTTLS).')
   }
 
-  cachedTransporter = nodemailer.createTransport({
+  const transportOptions = {
     host: config.host,
     port: config.port,
     secure: config.secure,
@@ -116,8 +123,14 @@ function getTransporter() {
     disableUrlAccess: true,
     logger: config.debug && process.env.NODE_ENV !== 'production',
     debug: config.debug && process.env.NODE_ENV !== 'production',
-  })
+  }
 
+  // For 587 STARTTLS, enforce secure TLS upgrade without disabling certificate validation
+  if (config.port === 587 && !config.secure) {
+    transportOptions.requireTLS = true
+  }
+
+  cachedTransporter = nodemailer.createTransport(transportOptions)
   cachedSignature = signature
   return cachedTransporter
 }
@@ -141,12 +154,13 @@ function classifySmtpError(err) {
   const message = err.message || ''
   const code = err.code || ''
   const responseCode = err.responseCode
+  const command = err.command || ''
 
   // 1. Missing or invalid configuration
   if (err.isConfigError || code === 'SMTP_CONFIG_ERROR') {
     return {
       code: 'SMTP_CONFIG_ERROR',
-      message: 'Email service is not configured yet.',
+      message: 'Email invitations are not configured.',
       category: 'CONFIGURATION',
     }
   }
@@ -155,7 +169,7 @@ function classifySmtpError(err) {
   if (code === 'EAUTH' || responseCode === 535 || /invalid login|badcredentials|username and password not accepted/i.test(message)) {
     return {
       code: 'SMTP_AUTH_ERROR',
-      message: 'Email account authentication failed. Check the SMTP credentials.',
+      message: 'Email invitations are temporarily unavailable.',
       category: 'AUTHENTICATION',
     }
   }
@@ -163,48 +177,76 @@ function classifySmtpError(err) {
   // 3. DNS lookup failure (ENOTFOUND / EAI_AGAIN)
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
     return {
-      code: 'SMTP_NETWORK_ERROR',
-      message: 'SMTP server address could not be resolved.',
+      code: 'SMTP_DNS_ERROR',
+      message: 'Email invitations are temporarily unavailable.',
       category: 'DNS',
     }
   }
 
   // 4. Connection timeout (ETIMEDOUT / ESOCKETTIMEDOUT)
   if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT' || /timeout|timed out/i.test(message)) {
-    const isRender = Boolean(process.env.RENDER)
     return {
       code: 'SMTP_TIMEOUT',
-      message: isRender
-        ? 'SMTP connection timed out. The deployment environment may block outbound SMTP traffic.'
-        : 'The email server connection timed out.',
+      message: 'Email invitations are temporarily unavailable.',
       category: 'TIMEOUT',
     }
   }
 
-  // 5. Connection refused / network failure (ECONNREFUSED / ENETUNREACH / EHOSTUNREACH)
+  // 5. Connection refused / network failure (ECONNREFUSED / ENETUNREACH / EHOSTUNREACH / ECONNRESET)
   if (code === 'ECONNREFUSED' || code === 'ENETUNREACH' || code === 'EHOSTUNREACH' || code === 'ECONNRESET') {
     return {
       code: 'SMTP_NETWORK_ERROR',
-      message: 'Could not connect to the email server.',
+      message: 'Email invitations are temporarily unavailable.',
       category: 'NETWORK',
     }
   }
 
-  // 6. TLS / SSL handshake failure (ESOCKET / CERT / TLS errors)
-  if (code === 'ESOCKET' || /tls|ssl|handshake|certificate/i.test(message)) {
+  // 6. TLS / SSL handshake failure
+  if (
+    code === 'ESOCKET' ||
+    code === 'ERR_TLS_CERT_ALTNAME_INVALID' ||
+    /tls|ssl|handshake|certificate|wrong_version_number|cert_has_expired|unable_to_verify_leaf_signature|err_tls/i.test(message)
+  ) {
     return {
       code: 'SMTP_TLS_ERROR',
-      message: 'Secure connection to the email server failed.',
+      message: 'Email service could not establish a secure connection.',
       category: 'TLS',
     }
   }
 
-  // 7. Recipient rejection (550 / 553 / rejected recipient)
-  if (responseCode === 550 || responseCode === 553 || err.isRecipientRejected) {
+  // 7. Sender address rejected (MAIL FROM)
+  if (command === 'MAIL FROM' || /sender address rejected|from address rejected/i.test(message)) {
+    return {
+      code: 'EMAIL_SENDER_REJECTED',
+      message: 'Email invitations are temporarily unavailable.',
+      category: 'SENDER',
+    }
+  }
+
+  // 8. Recipient address rejected (550 / 551 / 553 / RCPT TO)
+  if (responseCode === 550 || responseCode === 551 || responseCode === 553 || err.isRecipientRejected || /recipient rejected|mailbox unavailable/i.test(message)) {
     return {
       code: 'EMAIL_REJECTED',
-      message: 'The email server rejected the recipient address.',
+      message: 'This email address was rejected by the mail server.',
       category: 'RECIPIENT',
+    }
+  }
+
+  // 9. Temporary SMTP provider failure (421 / 450 / 451 / 452)
+  if ((responseCode && responseCode >= 420 && responseCode <= 459) || /try again later|service not available, closing transmission channel/i.test(message)) {
+    return {
+      code: 'SMTP_TEMPORARY_FAILURE',
+      message: 'Email service is busy. Please try again shortly.',
+      category: 'TEMPORARY',
+    }
+  }
+
+  // 10. Provider sending rate or quota limit
+  if (/rate limit|quota|too many messages|daily sending limit|sending quota/i.test(message)) {
+    return {
+      code: 'SMTP_PROVIDER_LIMIT',
+      message: 'Email sending is temporarily unavailable.',
+      category: 'LIMIT',
     }
   }
 
