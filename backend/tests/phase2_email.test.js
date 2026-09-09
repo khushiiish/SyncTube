@@ -64,10 +64,21 @@ async function runPhase2Tests() {
   assert.strictEqual(rOtherSocket.allowed, true)
   console.log('  [PASS] checkAndRecordInvite enforces socket cap, cooldown, and room quota')
 
-  // 4. SMTP configuration detection
+  // 4. Email configuration detection (HTTP providers & SMTP)
   const isConfigured = emailService.isConfigured()
   assert.strictEqual(typeof isConfigured, 'boolean')
-  console.log(`  [PASS] SMTP service detects configuration state (isConfigured: ${isConfigured})`)
+  console.log(`  [PASS] Email service detects configuration state (isConfigured: ${isConfigured})`)
+
+  // 5. Test Brevo HTTP provider detection
+  const origBrevo = process.env.BREVO_API_KEY
+  try {
+    process.env.BREVO_API_KEY = 'xkeysib-mock-test-key'
+    assert.strictEqual(emailService.isConfigured(), true)
+    console.log('  [PASS] Email service detects Brevo HTTP API configuration')
+  } finally {
+    if (origBrevo) process.env.BREVO_API_KEY = origBrevo
+    else delete process.env.BREVO_API_KEY
+  }
 }
 
 module.exports = { runPhase2Tests }

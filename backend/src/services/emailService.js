@@ -2,12 +2,15 @@ const dns = require('dns')
 const fs = require('fs')
 const path = require('path')
 const nodemailer = require('nodemailer')
+const util = require('util')
 const { escapeHtml } = require('../utils/escapeHtml')
 
 // Prioritize IPv4 DNS lookup to prevent 30-45s IPv6 timeout on residential/ISP networks
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first')
 }
+
+const dnsLookup = util.promisify(dns.lookup)
 
 // Log directory for invite diagnostics
 const LOG_DIR = path.join(__dirname, '../../logs')
@@ -24,23 +27,30 @@ function logInvite(message) {
 }
 
 /**
- * Checks if all essential SMTP configuration variables exist.
+ * Checks if any email delivery provider is configured:
+ * 1. Brevo HTTP API (BREVO_API_KEY) — recommended for cloud hosts like Render free tier
+ * 2. Resend HTTP API (RESEND_API_KEY)
+ * 3. SendGrid HTTP API (SENDGRID_API_KEY)
+ * 4. Traditional SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS)
  */
-function checkSmtpConfig() {
-  const host = process.env.SMTP_HOST
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
+function isConfigured() {
+  const hasHttpProvider = Boolean(
+    process.env.BREVO_API_KEY ||
+    process.env.RESEND_API_KEY ||
+    process.env.SENDGRID_API_KEY
+  )
+  const hasSmtp = Boolean(
+    process.env.SMTP_HOST &&
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASS
+  )
 
-  return Boolean(host && user && pass)
+  return hasHttpProvider || hasSmtp
 }
-
-const util = require('util')
-const dnsLookup = util.promisify(dns.lookup)
 
 /**
  * Resolves a hostname directly to its IPv4 address via OS getaddrinfo (family 4).
- * This completely prevents Nodemailer's internal resolver from picking an unreachable
- * IPv6 route on residential ISPs with broken IPv6 peering.
+ * Prevents Nodemailer from picking unreachable IPv6 routes on residential ISPs.
  */
 async function resolveIPv4Host(hostname) {
   try {
@@ -48,22 +58,18 @@ async function resolveIPv4Host(hostname) {
     if (result && result.address) {
       return result.address
     }
-  } catch (err) {
-    // If resolution fails, fallback to hostname
-  }
+  } catch (_) {}
   return hostname
 }
 
 /**
  * Creates a Nodemailer transporter instance with specified port, security, and timeouts.
- * Bypasses dropped IPv6 routing by resolving direct IPv4 address and setting TLS SNI servername.
  */
 async function createTransporter(port, secure) {
   const host = (process.env.SMTP_HOST || '').toLowerCase()
   const isGmail = host.includes('gmail')
   const actualHost = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost')
 
-  // Resolve direct IPv4 address
   const ipHost = await resolveIPv4Host(actualHost)
 
   return nodemailer.createTransport({
@@ -75,51 +81,222 @@ async function createTransporter(port, secure) {
       pass: process.env.SMTP_PASS,
     },
     tls: {
-      // Ensure TLS certificate matches actual hostname (e.g. smtp.gmail.com)
       servername: actualHost,
     },
-    connectionTimeout: 12000,
-    greetingTimeout: 12000,
-    socketTimeout: 15000,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 12000,
     disableFileAccess: true,
     disableUrlAccess: true,
   })
 }
 
 /**
- * Returns a configured transporter for standard usage.
+ * Dispatches an email via Brevo's v3 Transactional Email REST API over Port 443 (HTTPS).
+ * Completely immune to Render's outbound SMTP port blocking (ports 25, 465, 587).
  */
-function getTransporter() {
-  if (!checkSmtpConfig()) {
-    return null
+async function sendViaBrevo({ to, fromName, fromAddress, subject, htmlContent, textContent }) {
+  const apiKey = process.env.BREVO_API_KEY
+  logInvite(`Dispatching invitation to "${to}" via Brevo HTTP API (Port 443 HTTPS)...`)
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'api-key': apiKey,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: {
+        name: fromName,
+        email: fromAddress,
+      },
+      to: [
+        { email: to },
+      ],
+      subject,
+      htmlContent,
+      textContent,
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    const errorDetail = data.message || `HTTP status ${response.status}`
+    logInvite(`Brevo HTTP API delivery failed for "${to}": ${errorDetail}`)
+    throw new Error(`Brevo delivery failed: ${errorDetail}`)
+  }
+
+  const messageId = data.messageId || 'brevo-sent'
+  logInvite(`SUCCESS: Invitation delivered to "${to}" via Brevo (messageId: ${messageId})`)
+  return { success: true, messageId, provider: 'brevo' }
+}
+
+/**
+ * Dispatches an email via Resend's REST API over Port 443 (HTTPS).
+ */
+async function sendViaResend({ to, fromName, fromAddress, subject, htmlContent, textContent }) {
+  const apiKey = process.env.RESEND_API_KEY
+  logInvite(`Dispatching invitation to "${to}" via Resend HTTP API (Port 443 HTTPS)...`)
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: `${fromName} <${fromAddress}>`,
+      to: [to],
+      subject,
+      html: htmlContent,
+      text: textContent,
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    const errorDetail = data.message || `HTTP status ${response.status}`
+    logInvite(`Resend HTTP API delivery failed for "${to}": ${errorDetail}`)
+    throw new Error(`Resend delivery failed: ${errorDetail}`)
+  }
+
+  const messageId = data.id || 'resend-sent'
+  logInvite(`SUCCESS: Invitation delivered to "${to}" via Resend (id: ${messageId})`)
+  return { success: true, messageId, provider: 'resend' }
+}
+
+/**
+ * Dispatches an email via SendGrid's v3 Mail Send REST API over Port 443 (HTTPS).
+ */
+async function sendViaSendGrid({ to, fromName, fromAddress, subject, htmlContent, textContent }) {
+  const apiKey = process.env.SENDGRID_API_KEY
+  logInvite(`Dispatching invitation to "${to}" via SendGrid HTTP API (Port 443 HTTPS)...`)
+
+  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to }] }],
+      from: { email: fromAddress, name: fromName },
+      subject,
+      content: [
+        { type: 'text/plain', value: textContent },
+        { type: 'text/html', value: htmlContent },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    const errorDetail = data.errors?.[0]?.message || `HTTP status ${response.status}`
+    logInvite(`SendGrid HTTP API delivery failed for "${to}": ${errorDetail}`)
+    throw new Error(`SendGrid delivery failed: ${errorDetail}`)
+  }
+
+  logInvite(`SUCCESS: Invitation delivered to "${to}" via SendGrid`)
+  return { success: true, messageId: 'sendgrid-sent', provider: 'sendgrid' }
+}
+
+/**
+ * Dispatches an email via direct Nodemailer SMTP (dual-port 465/587).
+ * Used when running locally or on paid cloud hosts where outbound SMTP ports are not blocked.
+ */
+async function sendViaSmtp({ to, fromName, fromAddress, subject, htmlContent, textContent, roomId }) {
+  const from = `"${fromName}" <${fromAddress}>`
+  const mailOptions = {
+    from,
+    to,
+    subject,
+    text: textContent,
+    html: htmlContent,
   }
 
   const host = (process.env.SMTP_HOST || '').toLowerCase()
   const isGmail = host.includes('gmail')
-  const port = parseInt(process.env.SMTP_PORT, 10) || (isGmail ? 465 : 587)
-  const secure = process.env.SMTP_SECURE !== undefined
+  const primaryPort = parseInt(process.env.SMTP_PORT, 10) || (isGmail ? 465 : 587)
+  const primarySecure = process.env.SMTP_SECURE !== undefined
     ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
-    : (port === 465)
+    : (primaryPort === 465)
 
-  return {
-    verify: verifySmtp,
-    sendMail: (mailOptions) => sendRoomInvite({
-      to: mailOptions.to,
-      roomName: 'Watch Room',
-      roomId: 'ROOM',
-      inviterName: 'Host',
-    })
+  const fallbackPort = primaryPort === 465 ? 587 : 465
+  const fallbackSecure = fallbackPort === 465
+
+  logInvite(`Dispatching invitation to "${to}" for room "${roomId}" via SMTP (primary port: ${primaryPort})`)
+
+  let lastError = null
+  // Attempt 1: Primary port
+  try {
+    const transport = await createTransporter(primaryPort, primarySecure)
+    const result = await transport.sendMail(mailOptions)
+    logInvite(`SUCCESS: Invitation delivered to "${to}" via port ${primaryPort} (messageId: ${result.messageId})`)
+    return { success: true, messageId: result.messageId, provider: 'smtp' }
+  } catch (err1) {
+    lastError = err1
+    logInvite(`Primary port ${primaryPort} delivery failed for "${to}": ${err1.message}. Attempting fallback port ${fallbackPort}...`)
+  }
+
+  // Attempt 2: Fallback port
+  try {
+    const fallbackTransport = await createTransporter(fallbackPort, fallbackSecure)
+    const result = await fallbackTransport.sendMail(mailOptions)
+    logInvite(`SUCCESS: Invitation delivered to "${to}" via fallback port ${fallbackPort} (messageId: ${result.messageId})`)
+    return { success: true, messageId: result.messageId, provider: 'smtp' }
+  } catch (err2) {
+    logInvite(`Fallback port ${fallbackPort} also failed for "${to}": ${err2.message}`)
+
+    const errMessage = err2.message || lastError?.message || ''
+    const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i.test(errMessage)
+    const isRender = Boolean(process.env.RENDER)
+
+    if (isTimeout && isRender) {
+      throw new Error(
+        'Connection timeout: Render Free Tier blocks outbound SMTP ports 25, 465, and 587. Please add a free BREVO_API_KEY (HTTPS port 443) to your Render environment variables to send invites.'
+      )
+    }
+
+    if (isTimeout) {
+      throw new Error(
+        `Email delivery failed: Connection timeout. If running on cloud hosting (e.g. Render/Vercel), outbound SMTP is blocked. Set BREVO_API_KEY or RESEND_API_KEY to send via HTTPS.`
+      )
+    }
+
+    throw new Error(`Email delivery failed: ${errMessage}`)
   }
 }
 
 /**
- * Non-blocking startup diagnostic check.
- * Verifies SMTP connection without blocking server launch.
+ * Startup diagnostic check.
+ * Verifies email service without blocking server launch.
  */
 async function verifySmtp() {
-  if (!checkSmtpConfig()) {
-    logInvite('SMTP not configured. Email invitations disabled.')
+  if (!isConfigured()) {
+    logInvite('No email provider configured (HTTP API or SMTP). Email invitations disabled.')
     return false
+  }
+
+  if (process.env.BREVO_API_KEY) {
+    logInvite('Brevo HTTP API configured (Port 443 HTTPS). Immune to cloud SMTP port blocking.')
+    return true
+  }
+
+  if (process.env.RESEND_API_KEY) {
+    logInvite('Resend HTTP API configured (Port 443 HTTPS).')
+    return true
+  }
+
+  if (process.env.SENDGRID_API_KEY) {
+    logInvite('SendGrid HTTP API configured (Port 443 HTTPS).')
+    return true
+  }
+
+  if (process.env.RENDER) {
+    logInvite('NOTICE: Backend running on Render with SMTP. Note: Render Free Tier blocks outbound SMTP ports 25, 465, and 587. To send in production, set BREVO_API_KEY in Render dashboard.')
   }
 
   try {
@@ -141,19 +318,37 @@ async function verifySmtp() {
 }
 
 /**
+ * Returns a configured transporter interface for backward compatibility.
+ */
+function getTransporter() {
+  if (!isConfigured()) {
+    return null
+  }
+
+  return {
+    verify: verifySmtp,
+    sendMail: (mailOptions) => sendRoomInvite({
+      to: mailOptions.to,
+      roomName: 'Watch Room',
+      roomId: 'ROOM',
+      inviterName: 'Host',
+    }),
+  }
+}
+
+/**
  * Sends a room invitation email to a single recipient.
  *
  * @param {{ to: string, roomName: string, roomId: string, inviterName: string }} options
- * @returns {Promise<{ success: boolean, messageId?: string }>}
+ * @returns {Promise<{ success: boolean, messageId?: string, provider?: string }>}
  */
 async function sendRoomInvite({ to, roomName, roomId, inviterName }) {
-  if (!checkSmtpConfig()) {
+  if (!isConfigured()) {
     throw new Error('Email invitations are currently unavailable.')
   }
 
   const fromName = process.env.EMAIL_FROM_NAME || 'SyncTube'
-  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_USER
-  const from = `"${fromName}" <${fromAddress}>`
+  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_USER || 'invites@synctube.app'
 
   // Construct direct room link on server using CLIENT_URL
   const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '')
@@ -264,55 +459,29 @@ You do not need an account to join. Simply open the link and choose a display na
 </body>
 </html>`
 
-  const mailOptions = {
-    from,
-    to,
-    subject: "You're invited to a SyncTube watch party",
-    text: textContent,
-    html: htmlContent,
+  const subject = "You're invited to a SyncTube watch party"
+
+  // 1. Priority: HTTP API over Port 443 (Immune to Render Free Tier SMTP port blocking)
+  if (process.env.BREVO_API_KEY) {
+    return await sendViaBrevo({ to, fromName, fromAddress, subject, htmlContent, textContent })
   }
 
-  // Primary port configuration (e.g. 465 SSL or configured port)
-  const host = (process.env.SMTP_HOST || '').toLowerCase()
-  const isGmail = host.includes('gmail')
-  const primaryPort = parseInt(process.env.SMTP_PORT, 10) || (isGmail ? 465 : 587)
-  const primarySecure = process.env.SMTP_SECURE !== undefined
-    ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
-    : (primaryPort === 465)
-
-  // Secondary fallback port (465 <-> 587)
-  const fallbackPort = primaryPort === 465 ? 587 : 465
-  const fallbackSecure = fallbackPort === 465
-
-  logInvite(`Dispatching invitation to "${to}" for room "${roomId}" (primary port: ${primaryPort})`)
-
-  let lastError = null
-  // Attempt 1: Primary port
-  try {
-    const transport = await createTransporter(primaryPort, primarySecure)
-    const result = await transport.sendMail(mailOptions)
-    logInvite(`SUCCESS: Invitation delivered to "${to}" via port ${primaryPort} (messageId: ${result.messageId})`)
-    return { success: true, messageId: result.messageId }
-  } catch (err1) {
-    lastError = err1
-    logInvite(`Primary port ${primaryPort} delivery failed for "${to}": ${err1.message}. Attempting fallback port ${fallbackPort}...`)
+  if (process.env.RESEND_API_KEY) {
+    return await sendViaResend({ to, fromName, fromAddress, subject, htmlContent, textContent })
   }
 
-  // Attempt 2: Fallback port
-  try {
-    const fallbackTransport = await createTransporter(fallbackPort, fallbackSecure)
-    const result = await fallbackTransport.sendMail(mailOptions)
-    logInvite(`SUCCESS: Invitation delivered to "${to}" via fallback port ${fallbackPort} (messageId: ${result.messageId})`)
-    return { success: true, messageId: result.messageId }
-  } catch (err2) {
-    logInvite(`Fallback port ${fallbackPort} also failed for "${to}": ${err2.message}`)
-    throw new Error(`Email delivery failed: ${err2.message || lastError.message}`)
+  if (process.env.SENDGRID_API_KEY) {
+    return await sendViaSendGrid({ to, fromName, fromAddress, subject, htmlContent, textContent })
   }
+
+  // 2. Fallback: Direct SMTP (Port 465 / 587)
+  return await sendViaSmtp({ to, fromName, fromAddress, subject, htmlContent, textContent, roomId })
 }
 
 module.exports = {
   sendRoomInvite,
   verifySmtp,
   getTransporter,
-  isConfigured: checkSmtpConfig,
+  isConfigured,
+  checkSmtpConfig: isConfigured, // Backward compatibility alias
 }
