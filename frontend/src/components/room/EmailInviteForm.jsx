@@ -57,7 +57,7 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
 
     setIsLoading(true)
 
-    // Timeout safety guard (10 seconds)
+    // Timeout safety guard (25 seconds)
     let isSettled = false
     const timeoutTimer = setTimeout(() => {
       if (!isSettled) {
@@ -66,7 +66,7 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
         setError('Invitation request timed out. Please try again.')
         toast.error('Invitation timed out.')
       }
-    }, 10000)
+    }, 25000)
 
     emitSendEmailInvite(socket, { roomId, recipientEmail: trimmed }, (response) => {
       if (isSettled) return

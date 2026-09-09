@@ -1,5 +1,11 @@
+const dns = require('dns')
 const nodemailer = require('nodemailer')
 const { escapeHtml } = require('../utils/escapeHtml')
+
+// Prioritize IPv4 DNS lookup to prevent 30-45s IPv6 timeout on residential/ISP networks
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first')
+}
 
 /**
  * emailService — Reusable Nodemailer service for SyncTube.
@@ -44,33 +50,21 @@ function getTransporter() {
     ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
     : (port === 465)
 
-  const transportConfig = isGmail
-    ? {
-        service: 'gmail',
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-        disableFileAccess: true,
-        disableUrlAccess: true,
-      }
-    : {
-        host: process.env.SMTP_HOST,
-        port,
-        secure,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-        disableFileAccess: true,
-        disableUrlAccess: true,
-      }
+  const transportConfig = {
+    host: process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost'),
+    port,
+    secure,
+    family: 4, // Force IPv4 to prevent hanging on dropped IPv6 routes
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    disableFileAccess: true,
+    disableUrlAccess: true,
+  }
 
   transporter = nodemailer.createTransport(transportConfig)
 
