@@ -9,7 +9,7 @@
 
 const SOCKET_WINDOW_MS = 10 * 60 * 1000 // 10 minutes
 const SOCKET_MAX_ATTEMPTS = 5
-const COOLDOWN_MS = 60 * 1000 // 60 seconds
+const COOLDOWN_MS = 15 * 1000 // 15 seconds production-grade anti-spam debounce
 
 // Map<socketId, number[]> (array of timestamps)
 const socketAttempts = new Map()
@@ -52,7 +52,7 @@ if (cleanupInterval.unref) cleanupInterval.unref() // Do not hold the event loop
  * @param {string} socketId
  * @param {string} roomId
  * @param {string} normalizedEmail
- * @returns {{ allowed: boolean, code?: string, message?: string }}
+ * @returns {{ allowed: boolean, code?: string, remainingSeconds?: number, message?: string }}
  */
 function checkAndRecordInvite(socketId, roomId, normalizedEmail) {
   const now = Date.now()
@@ -61,10 +61,11 @@ function checkAndRecordInvite(socketId, roomId, normalizedEmail) {
   const cooldownKey = `${roomId.toUpperCase()}:${normalizedEmail}`
   const lastSent = recipientCooldowns.get(cooldownKey)
   if (lastSent && (now - lastSent) < COOLDOWN_MS) {
-    const remainingSeconds = Math.ceil((COOLDOWN_MS - (now - lastSent)) / 1000)
+    const remainingSeconds = Math.max(1, Math.ceil((COOLDOWN_MS - (now - lastSent)) / 1000))
     return {
       allowed: false,
       code: 'COOLDOWN_ACTIVE',
+      remainingSeconds,
       message: `An invitation was already sent to this address recently. Please wait ${remainingSeconds}s before sending again.`,
     }
   }
@@ -90,6 +91,29 @@ function checkAndRecordInvite(socketId, roomId, normalizedEmail) {
 }
 
 /**
+ * Rolls back an invite attempt if delivery fails (e.g. SMTP connection error).
+ * Ensures users are not penalized with cooldowns or attempt counters when delivery fails.
+ *
+ * @param {string} socketId
+ * @param {string} roomId
+ * @param {string} normalizedEmail
+ */
+function rollbackInvite(socketId, roomId, normalizedEmail) {
+  const cooldownKey = `${roomId.toUpperCase()}:${normalizedEmail}`
+  recipientCooldowns.delete(cooldownKey)
+
+  const attempts = socketAttempts.get(socketId)
+  if (attempts && attempts.length > 0) {
+    attempts.pop()
+    if (attempts.length === 0) {
+      socketAttempts.delete(socketId)
+    } else {
+      socketAttempts.set(socketId, attempts)
+    }
+  }
+}
+
+/**
  * Resets tracking state (useful for tests).
  */
 function resetRateLimits() {
@@ -99,6 +123,7 @@ function resetRateLimits() {
 
 module.exports = {
   checkAndRecordInvite,
+  rollbackInvite,
   resetRateLimits,
   pruneExpiredEntries,
 }

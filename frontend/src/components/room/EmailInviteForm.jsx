@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Mail, X, Send, AlertCircle, Loader2 } from 'lucide-react'
+import { Mail, X, Send, AlertCircle, Loader2, CheckCircle2, Clock } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { emitSendEmailInvite } from '../../services/socketService'
 
@@ -11,7 +11,8 @@ import { emitSendEmailInvite } from '../../services/socketService'
  *
  * Features:
  * - Local validation (single recipient, valid RFC 5322 structure)
- * - Double-click prevention & 10s request timeout guard
+ * - Double-click prevention & 25s request timeout guard
+ * - Live anti-spam cooldown countdown
  * - Socket disconnection awareness
  * - Framer Motion slide-in animation
  */
@@ -19,6 +20,7 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [cooldown, setCooldown] = useState(0)
   const inputRef = useRef(null)
 
   // Autofocus input when form mounts
@@ -26,9 +28,18 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
     inputRef.current?.focus()
   }, [])
 
+  // Live countdown timer for resend cooldown
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const interval = setInterval(() => {
+      setCooldown(c => Math.max(0, c - 1))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [cooldown])
+
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (isLoading) return
+    if (isLoading || cooldown > 0) return
 
     const trimmed = email.trim()
     setError('')
@@ -75,12 +86,21 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
       setIsLoading(false)
 
       if (response?.success) {
-        toast.success(response.message || 'Invitation sent!')
+        toast.success(response.message || `Invitation sent to ${trimmed}!`)
         setEmail('')
         setError('')
+        setCooldown(0)
         if (typeof onClose === 'function') {
           onClose()
         }
+      } else if (response?.code === 'COOLDOWN_ACTIVE') {
+        const remaining = response?.remainingSeconds || 15
+        setCooldown(remaining)
+        setError('')
+        toast('Invitation already sent to this address recently.', {
+          icon: '✉️',
+          duration: 3500,
+        })
       } else {
         const msg = response?.message || 'Could not send invitation.'
         setError(msg)
@@ -133,12 +153,21 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
               onChange={(e) => {
                 setEmail(e.target.value)
                 if (error) setError('')
+                if (cooldown > 0) setCooldown(0)
               }}
               placeholder="friend@example.com"
               disabled={isLoading || !isConnected}
               className="w-full bg-[#0e0e10] border border-[#27272A] focus:border-[#ff5451]/50 rounded-lg px-3 py-2 text-[13px] text-[#e5e1e4] placeholder:text-[#e4beba]/35 focus:outline-none transition-colors disabled:opacity-50"
             />
           </div>
+
+          {/* Cooldown Active Notice */}
+          {cooldown > 0 && !error && (
+            <div className="flex items-center gap-1.5 text-[12px] text-[#ffb3ad] bg-[#ffb3ad]/10 border border-[#ffb3ad]/20 px-2.5 py-1.5 rounded-lg">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#ffb3ad] flex-shrink-0" />
+              <span>Invitation already sent! You can resend in {cooldown}s.</span>
+            </div>
+          )}
 
           {error && (
             <div className="flex items-center gap-1.5 text-[12px] text-[#ffb4ab]">
@@ -163,13 +192,18 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
               </button>
               <button
                 type="submit"
-                disabled={isLoading || !email.trim() || !isConnected}
+                disabled={isLoading || !email.trim() || !isConnected || cooldown > 0}
                 className="px-3.5 py-1.5 bg-[#ff5451] hover:bg-[#ffb3ad] text-white hover:text-[#68000a] text-[12px] font-[Geist,sans-serif] font-bold rounded-lg transition-all shadow-md shadow-[#ff5451]/15 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin" />
                     Sending...
+                  </>
+                ) : cooldown > 0 ? (
+                  <>
+                    <Clock className="w-3 h-3" />
+                    Resend in {cooldown}s
                   </>
                 ) : (
                   <>

@@ -3,7 +3,7 @@ const { nanoid } = require('nanoid')
 const roomService = require('../services/roomService')
 const emailService = require('../services/emailService')
 const { validateEmail } = require('../utils/validateEmail')
-const { checkAndRecordInvite } = require('../services/inviteRateLimiter')
+const { checkAndRecordInvite, rollbackInvite } = require('../services/inviteRateLimiter')
 const { deriveIdentity } = require('../utils/identityService')
 const disconnectGraceManager = require('../services/disconnectGraceManager')
 const { uploadAudio, deleteAudio } = require('../services/voiceStorageService')
@@ -997,6 +997,7 @@ function registerRoomHandlers(socket, io) {
         return ack({
           success: false,
           code:    rateLimitCheck.code || 'RATE_LIMITED',
+          remainingSeconds: rateLimitCheck.remainingSeconds,
           message: rateLimitCheck.message || 'Too many invitations. Please wait before trying again.',
         })
       }
@@ -1015,6 +1016,14 @@ function registerRoomHandlers(socket, io) {
       })
     } catch (err) {
       console.warn(`[Socket] send_email_invite error for socket ${socket.id}:`, err.message)
+
+      // Roll back cooldown and attempt counter so user isn't locked out after delivery failure
+      try {
+        if (room?.roomId && normalizedEmail) {
+          rollbackInvite(socket.id, room.roomId, normalizedEmail)
+        }
+      } catch (_) {}
+
       const isUnavailable = err.message && err.message.includes('unavailable')
       return ack({
         success: false,
