@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Square, Trash2, Send, Play, Pause, Loader2, AlertCircle, Mic } from 'lucide-react'
+import { Square, Trash2, Send, Play, Pause, Loader2, AlertCircle, Mic, X } from 'lucide-react'
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder'
 import { formatAudioDuration } from '../../utils/audioFormat'
 
@@ -154,49 +154,34 @@ export default function VoiceRecorder({ onSendVoice, onCancel, isSending = false
             title="Cancel"
             className="p-1.5 text-[#e4beba]/60 hover:text-[#ef4444] hover:bg-[#ef4444]/10 rounded-lg transition-colors"
           >
-            <Trash2 className="w-4 h-4" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {/* Active Recording State */}
       {isRecording && (
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            {/* Pulsing record indicator */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ef4444] opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#ef4444]" />
-              </span>
-              <span className="font-[Geist,sans-serif] text-[13px] font-medium text-[#e5e1e4] hidden sm:inline">
-                Recording...
-              </span>
-            </div>
+        <div className="flex items-center justify-between gap-1.5">
+          {/* Left: Pulsing Dot + Live Timer */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ef4444] opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ef4444]" />
+            </span>
 
-            {/* Live timer */}
-            <span className="font-mono text-[13px] text-[#ffb3ad] bg-[#201f22] px-2 py-0.5 rounded-md border border-[#27272A] flex-shrink-0">
+            <span className="font-mono text-[12px] sm:text-[13px] font-semibold text-[#ffb3ad] bg-[#201f22] px-2 py-1 rounded-md border border-[#27272A] flex-shrink-0 whitespace-nowrap">
               {formatAudioDuration(duration)} / 1:00
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            {/* Cancel button */}
-            <button
-              type="button"
-              onClick={handleCancel}
-              title="Cancel recording"
-              className="p-1.5 text-[#e4beba]/60 hover:text-[#ef4444] hover:bg-[#ef4444]/10 rounded-lg transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-
+          {/* Right Action buttons: Done and Send */}
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
             {/* Stop / Review button (switches to preview) */}
             <button
               type="button"
               onClick={handleStopForReview}
               title="Stop & review recording"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-[#27272a] text-[#e5e1e4] hover:bg-[#3f3f46] rounded-lg font-[Geist,sans-serif] text-[12px] sm:text-[13px] font-medium transition-colors active:scale-95"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-[#27272a] text-[#e5e1e4] hover:bg-[#3f3f46] rounded-lg font-[Geist,sans-serif] text-[12px] font-medium transition-colors active:scale-95 flex-shrink-0"
             >
               <Square className="w-3 h-3 fill-current" />
               <span>Done</span>
@@ -208,7 +193,7 @@ export default function VoiceRecorder({ onSendVoice, onCancel, isSending = false
               onClick={handleStopAndSend}
               disabled={isSending}
               title="Stop and send voice message now"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#ffb3ad] text-[#201f22] hover:bg-[#ffcdc8] rounded-lg font-[Geist,sans-serif] text-[12px] sm:text-[13px] font-semibold transition-colors active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#ffb3ad] text-[#201f22] hover:bg-[#ffcdc8] rounded-lg font-[Geist,sans-serif] text-[12px] font-semibold transition-colors active:scale-95 disabled:opacity-50 flex-shrink-0"
             >
               {isSending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -223,7 +208,7 @@ export default function VoiceRecorder({ onSendVoice, onCancel, isSending = false
 
       {/* Preview State */}
       {isPreview && (
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-1.5">
           {audioUrl && (
             <audio
               ref={previewAudioRef}
@@ -232,45 +217,34 @@ export default function VoiceRecorder({ onSendVoice, onCancel, isSending = false
             />
           )}
 
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             {/* Preview play/pause */}
             <button
               type="button"
               onClick={togglePreviewPlay}
               disabled={isSending}
               aria-label={previewPlaying ? 'Pause preview' : 'Play preview'}
-              className="w-8 h-8 rounded-full bg-[#ffb3ad]/20 text-[#ffb3ad] hover:bg-[#ffb3ad]/30 flex items-center justify-center transition-colors flex-shrink-0"
+              className="w-7 h-7 rounded-full bg-[#ffb3ad]/20 text-[#ffb3ad] hover:bg-[#ffb3ad]/30 flex items-center justify-center transition-colors flex-shrink-0"
             >
               {previewPlaying ? (
-                <Pause className="w-3.5 h-3.5 fill-current" />
+                <Pause className="w-3 h-3 fill-current" />
               ) : (
-                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                <Play className="w-3 h-3 fill-current ml-0.5" />
               )}
             </button>
 
-            <span className="font-[Geist,sans-serif] text-[12px] sm:text-[13px] text-[#e5e1e4] truncate">
+            <span className="font-[Geist,sans-serif] text-[12px] text-[#e5e1e4] truncate">
               Voice note ({formatAudioDuration(duration)})
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            {/* Discard button */}
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={isSending}
-              title="Discard voice note"
-              className="p-1.5 text-[#e4beba]/60 hover:text-[#ef4444] hover:bg-[#ef4444]/10 rounded-lg transition-colors disabled:opacity-50"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
             {/* Send voice message button */}
             <button
               type="button"
               onClick={handleSendPreview}
               disabled={isSending}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 bg-[#ffb3ad] text-[#201f22] hover:bg-[#ffcdc8] rounded-lg font-[Geist,sans-serif] text-[12px] sm:text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#ffb3ad] text-[#201f22] hover:bg-[#ffcdc8] rounded-lg font-[Geist,sans-serif] text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex-shrink-0"
             >
               {isSending ? (
                 <>
@@ -283,6 +257,17 @@ export default function VoiceRecorder({ onSendVoice, onCancel, isSending = false
                   <span>Send</span>
                 </>
               )}
+            </button>
+
+            {/* Discard / Delete button — aside of Send button */}
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={isSending}
+              title="Discard voice note"
+              className="p-1.5 text-[#e4beba]/60 hover:text-[#ef4444] hover:bg-[#ef4444]/10 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -301,9 +286,10 @@ export default function VoiceRecorder({ onSendVoice, onCancel, isSending = false
             <button
               type="button"
               onClick={handleCancel}
+              title="Close"
               className="p-1.5 text-[#e4beba]/60 hover:text-[#ef4444] rounded-lg transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <X className="w-4 h-4" />
             </button>
             <button
               type="button"
