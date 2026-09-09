@@ -1003,7 +1003,7 @@ function registerRoomHandlers(socket, io) {
       }
 
       // 5. Dispatch email with server-authoritative room and inviter details
-      await emailService.sendRoomInvite({
+      const result = await emailService.sendRoomInvite({
         to:          normalizedEmail,
         roomName:    room.roomName,
         roomId:      room.roomId,
@@ -1012,10 +1012,11 @@ function registerRoomHandlers(socket, io) {
 
       return ack({
         success: true,
-        message: 'Invitation sent successfully.',
+        code:    result.code || 'EMAIL_SENT',
+        message: result.message || 'Invitation sent successfully.',
       })
     } catch (err) {
-      console.warn(`[Socket] send_email_invite error for socket ${socket.id}:`, err.message)
+      console.warn(`[Socket] send_email_invite error for socket ${socket.id} [${err.code || 'ERROR'}]:`, err.message)
 
       // Roll back cooldown and attempt counter so user isn't locked out after delivery failure
       try {
@@ -1024,15 +1025,10 @@ function registerRoomHandlers(socket, io) {
         }
       } catch (_) {}
 
-      const isUnavailable = err.message && err.message.includes('unavailable')
-      const errorMessage = isUnavailable
-        ? 'Email invitations are currently unavailable on this server.'
-        : (err.message ? `Could not send invitation: ${err.message}` : 'Could not send invitation. Please try again later.')
-
       return ack({
         success: false,
-        code:    isUnavailable ? 'SERVICE_UNAVAILABLE' : 'SEND_FAILED',
-        message: errorMessage,
+        code:    err.code || 'SEND_FAILED',
+        message: err.userMessage || err.message || 'Could not send invitation. Please try again later.',
       })
     }
   })

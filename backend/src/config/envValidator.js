@@ -16,26 +16,18 @@ function validateEnv() {
     process.env.CLERK_PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY
   }
 
+  const isSmtpSet = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+
   const diagnostics = {
-    nodeEnv:        process.env.NODE_ENV || 'development',
-    port:           process.env.PORT || 5000,
-    clientUrl:      process.env.CLIENT_URL || '[default: http://localhost:5173]',
-    mongoUri:       process.env.MONGODB_URI ? '[configured]' : '[missing]',
-    clerkPub:       maskSecret(process.env.CLERK_PUBLISHABLE_KEY),
-    clerkSecret:    maskSecret(process.env.CLERK_SECRET_KEY),
-    smtpConfigured: Boolean(process.env.BREVO_API_KEY || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY || (process.env.SMTP_HOST && (process.env.SMTP_USER || !process.env.SMTP_PASS))),
+    nodeEnv:              process.env.NODE_ENV || 'development',
+    port:                 process.env.PORT || 5000,
+    clientUrl:            process.env.CLIENT_URL || '[default: http://localhost:5173]',
+    mongoUri:             process.env.MONGODB_URI ? '[configured]' : '[missing]',
+    clerkPub:             maskSecret(process.env.CLERK_PUBLISHABLE_KEY),
+    clerkSecret:          maskSecret(process.env.CLERK_SECRET_KEY),
+    smtpConfigured:       isSmtpSet,
     cloudinaryConfigured: Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET),
   }
-
-  const emailProviderLabel = process.env.BREVO_API_KEY
-    ? 'ENABLED (Brevo HTTP API - Port 443)'
-    : process.env.RESEND_API_KEY
-    ? 'ENABLED (Resend HTTP API - Port 443)'
-    : process.env.SENDGRID_API_KEY
-    ? 'ENABLED (SendGrid HTTP API - Port 443)'
-    : diagnostics.smtpConfigured
-    ? `ENABLED (SMTP ${process.env.SMTP_HOST || ''})`
-    : 'DISABLED (invites unavailable)'
 
   console.log('====================================================')
   console.log('  SyncTube Backend - Configuration Diagnostic')
@@ -46,7 +38,7 @@ function validateEnv() {
   console.log(`  MongoDB URI:          ${diagnostics.mongoUri}`)
   console.log(`  Clerk Publishable:    ${diagnostics.clerkPub}`)
   console.log(`  Clerk Secret:         ${diagnostics.clerkSecret}`)
-  console.log(`  Email Service:        ${emailProviderLabel}`)
+  console.log(`  SMTP Service:         ${diagnostics.smtpConfigured ? `ENABLED (${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587})` : 'DISABLED (invites unavailable)'}`)
   console.log(`  Cloudinary Storage:   ${diagnostics.cloudinaryConfigured ? 'ENABLED' : 'DISABLED (voice messages unavailable)'}`)
   console.log('====================================================')
 
@@ -59,8 +51,8 @@ function validateEnv() {
   if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) {
     warnings.push('CLERK authentication keys are missing. Authenticated endpoints and token verification will fail.')
   }
-  if (process.env.RENDER && !process.env.BREVO_API_KEY && !process.env.RESEND_API_KEY && !process.env.SENDGRID_API_KEY && process.env.SMTP_HOST) {
-    warnings.push('Render Free Tier blocks outbound SMTP ports 25, 465, and 587. Email invites will time out. Set BREVO_API_KEY (over HTTPS port 443) in your Render environment variables to enable reliable email delivery.')
+  if (process.env.RENDER && isSmtpSet) {
+    warnings.push('Render Free tier blocks outbound SMTP ports (25, 465, 587). If invite timeouts occur in production, hosting with outbound SMTP egress or a paid plan is required.')
   }
 
   if (warnings.length > 0) {

@@ -1,354 +1,293 @@
 const dns = require('dns')
-const fs = require('fs')
-const path = require('path')
 const nodemailer = require('nodemailer')
-const util = require('util')
 const { escapeHtml } = require('../utils/escapeHtml')
 
-// Prioritize IPv4 DNS lookup to prevent 30-45s IPv6 timeout on residential/ISP networks
+// Prioritize IPv4 DNS lookup to prevent 30s IPv6 timeout on residential/ISP dual-stack networks
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first')
 }
 
-const dnsLookup = util.promisify(dns.lookup)
-
-// Log directory for invite diagnostics
-const LOG_DIR = path.join(__dirname, '../../logs')
-try {
-  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true })
-} catch (_) {}
-
-function logInvite(message) {
-  const line = `[${new Date().toISOString()}] ${message}\n`
-  try {
-    fs.appendFileSync(path.join(LOG_DIR, 'invite.log'), line)
-  } catch (_) {}
-  console.log(`[Mail] ${message}`)
-}
+// Single cached transporter instance and configuration signature
+let cachedTransporter = null
+let cachedSignature = ''
 
 /**
- * Checks if any email delivery provider is configured:
- * 1. Brevo HTTP API (BREVO_API_KEY) — recommended for cloud hosts like Render free tier
- * 2. Resend HTTP API (RESEND_API_KEY)
- * 3. SendGrid HTTP API (SENDGRID_API_KEY)
- * 4. Traditional SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS)
+ * Extracts, parses, and validates SMTP configuration from environment variables.
+ *
+ * Strict parsing rules:
+ * - SMTP_SECURE: strictly checks for 'true' (Boolean("false") === true is prevented).
+ * - SMTP_PORT: parsed to integer with 1-65535 boundary validation (default 587).
+ * - SMTP_HOST / SMTP_USER / SMTP_PASS: trimmed strings.
+ * - EMAIL_FROM: falls back strictly to SMTP_USER (no fake domain fallback).
+ *
+ * @returns {{
+ *   host: string,
+ *   port: number,
+ *   secure: boolean,
+ *   user: string,
+ *   pass: string,
+ *   fromAddress: string,
+ *   fromName: string,
+ *   debug: boolean,
+ *   isValid: boolean,
+ *   missing: string[]
+ * }}
  */
-function isConfigured() {
-  const hasHttpProvider = Boolean(
-    process.env.BREVO_API_KEY ||
-    process.env.RESEND_API_KEY ||
-    process.env.SENDGRID_API_KEY
-  )
-  const hasSmtp = Boolean(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
-  )
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST ? process.env.SMTP_HOST.trim() : ''
+  const rawPort = process.env.SMTP_PORT ? String(process.env.SMTP_PORT).trim() : '587'
+  const port = parseInt(rawPort, 10)
+  const secure = String(process.env.SMTP_SECURE || '').trim().toLowerCase() === 'true'
+  const user = process.env.SMTP_USER ? process.env.SMTP_USER.trim() : ''
+  // Trim surrounding whitespace only; preserve legitimate password characters
+  const pass = process.env.SMTP_PASS ? process.env.SMTP_PASS.trim() : ''
+  const fromAddress = (process.env.EMAIL_FROM && process.env.EMAIL_FROM.trim()) || user
+  const fromName = (process.env.EMAIL_FROM_NAME && process.env.EMAIL_FROM_NAME.trim()) || 'SyncTube'
+  const debug = String(process.env.SMTP_DEBUG || '').trim().toLowerCase() === 'true'
 
-  return hasHttpProvider || hasSmtp
-}
+  const missing = []
+  if (!host) missing.push('SMTP_HOST')
+  if (!user) missing.push('SMTP_USER')
+  if (!pass) missing.push('SMTP_PASS')
+  if (!rawPort || isNaN(port) || port <= 0 || port > 65535) missing.push('SMTP_PORT')
 
-/**
- * Resolves a hostname directly to its IPv4 address via OS getaddrinfo (family 4).
- * Prevents Nodemailer from picking unreachable IPv6 routes on residential ISPs.
- */
-async function resolveIPv4Host(hostname) {
-  try {
-    const result = await dnsLookup(hostname, { family: 4 })
-    if (result && result.address) {
-      return result.address
-    }
-  } catch (_) {}
-  return hostname
-}
+  const isValid = missing.length === 0
 
-/**
- * Creates a Nodemailer transporter instance with specified port, security, and timeouts.
- */
-async function createTransporter(port, secure) {
-  const host = (process.env.SMTP_HOST || '').toLowerCase()
-  const isGmail = host.includes('gmail')
-  const actualHost = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost')
-
-  const ipHost = await resolveIPv4Host(actualHost)
-
-  return nodemailer.createTransport({
-    host: ipHost,
-    port,
+  return {
+    host,
+    port: isNaN(port) ? 587 : port,
     secure,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    tls: {
-      servername: actualHost,
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 12000,
-    disableFileAccess: true,
-    disableUrlAccess: true,
-  })
+    user,
+    pass,
+    fromAddress,
+    fromName,
+    debug,
+    isValid,
+    missing,
+  }
 }
 
 /**
- * Dispatches an email via Brevo's v3 Transactional Email REST API over Port 443 (HTTPS).
- * Completely immune to Render's outbound SMTP port blocking (ports 25, 465, 587).
+ * Returns whether SMTP is fully and validly configured.
+ * @returns {boolean}
  */
-async function sendViaBrevo({ to, fromName, fromAddress, subject, htmlContent, textContent }) {
-  const apiKey = process.env.BREVO_API_KEY
-  logInvite(`Dispatching invitation to "${to}" via Brevo HTTP API (Port 443 HTTPS)...`)
-
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'api-key': apiKey,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      sender: {
-        name: fromName,
-        email: fromAddress,
-      },
-      to: [
-        { email: to },
-      ],
-      subject,
-      htmlContent,
-      textContent,
-    }),
-  })
-
-  const data = await response.json().catch(() => ({}))
-
-  if (!response.ok) {
-    const errorDetail = data.message || `HTTP status ${response.status}`
-    logInvite(`Brevo HTTP API delivery failed for "${to}": ${errorDetail}`)
-    throw new Error(`Brevo delivery failed: ${errorDetail}`)
-  }
-
-  const messageId = data.messageId || 'brevo-sent'
-  logInvite(`SUCCESS: Invitation delivered to "${to}" via Brevo (messageId: ${messageId})`)
-  return { success: true, messageId, provider: 'brevo' }
+function isSmtpConfigured() {
+  return getSmtpConfig().isValid
 }
 
 /**
- * Dispatches an email via Resend's REST API over Port 443 (HTTPS).
- */
-async function sendViaResend({ to, fromName, fromAddress, subject, htmlContent, textContent }) {
-  const apiKey = process.env.RESEND_API_KEY
-  logInvite(`Dispatching invitation to "${to}" via Resend HTTP API (Port 443 HTTPS)...`)
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: `${fromName} <${fromAddress}>`,
-      to: [to],
-      subject,
-      html: htmlContent,
-      text: textContent,
-    }),
-  })
-
-  const data = await response.json().catch(() => ({}))
-
-  if (!response.ok) {
-    const errorDetail = data.message || `HTTP status ${response.status}`
-    logInvite(`Resend HTTP API delivery failed for "${to}": ${errorDetail}`)
-    throw new Error(`Resend delivery failed: ${errorDetail}`)
-  }
-
-  const messageId = data.id || 'resend-sent'
-  logInvite(`SUCCESS: Invitation delivered to "${to}" via Resend (id: ${messageId})`)
-  return { success: true, messageId, provider: 'resend' }
-}
-
-/**
- * Dispatches an email via SendGrid's v3 Mail Send REST API over Port 443 (HTTPS).
- */
-async function sendViaSendGrid({ to, fromName, fromAddress, subject, htmlContent, textContent }) {
-  const apiKey = process.env.SENDGRID_API_KEY
-  logInvite(`Dispatching invitation to "${to}" via SendGrid HTTP API (Port 443 HTTPS)...`)
-
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: fromAddress, name: fromName },
-      subject,
-      content: [
-        { type: 'text/plain', value: textContent },
-        { type: 'text/html', value: htmlContent },
-      ],
-    }),
-  })
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    const errorDetail = data.errors?.[0]?.message || `HTTP status ${response.status}`
-    logInvite(`SendGrid HTTP API delivery failed for "${to}": ${errorDetail}`)
-    throw new Error(`SendGrid delivery failed: ${errorDetail}`)
-  }
-
-  logInvite(`SUCCESS: Invitation delivered to "${to}" via SendGrid`)
-  return { success: true, messageId: 'sendgrid-sent', provider: 'sendgrid' }
-}
-
-/**
- * Dispatches an email via direct Nodemailer SMTP (dual-port 465/587).
- * Used when running locally or on paid cloud hosts where outbound SMTP ports are not blocked.
- */
-async function sendViaSmtp({ to, fromName, fromAddress, subject, htmlContent, textContent, roomId }) {
-  const from = `"${fromName}" <${fromAddress}>`
-  const mailOptions = {
-    from,
-    to,
-    subject,
-    text: textContent,
-    html: htmlContent,
-  }
-
-  const host = (process.env.SMTP_HOST || '').toLowerCase()
-  const isGmail = host.includes('gmail')
-  const primaryPort = parseInt(process.env.SMTP_PORT, 10) || (isGmail ? 465 : 587)
-  const primarySecure = process.env.SMTP_SECURE !== undefined
-    ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
-    : (primaryPort === 465)
-
-  const fallbackPort = primaryPort === 465 ? 587 : 465
-  const fallbackSecure = fallbackPort === 465
-
-  logInvite(`Dispatching invitation to "${to}" for room "${roomId}" via SMTP (primary port: ${primaryPort})`)
-
-  let lastError = null
-  // Attempt 1: Primary port
-  try {
-    const transport = await createTransporter(primaryPort, primarySecure)
-    const result = await transport.sendMail(mailOptions)
-    logInvite(`SUCCESS: Invitation delivered to "${to}" via port ${primaryPort} (messageId: ${result.messageId})`)
-    return { success: true, messageId: result.messageId, provider: 'smtp' }
-  } catch (err1) {
-    lastError = err1
-    logInvite(`Primary port ${primaryPort} delivery failed for "${to}": ${err1.message}. Attempting fallback port ${fallbackPort}...`)
-  }
-
-  // Attempt 2: Fallback port
-  try {
-    const fallbackTransport = await createTransporter(fallbackPort, fallbackSecure)
-    const result = await fallbackTransport.sendMail(mailOptions)
-    logInvite(`SUCCESS: Invitation delivered to "${to}" via fallback port ${fallbackPort} (messageId: ${result.messageId})`)
-    return { success: true, messageId: result.messageId, provider: 'smtp' }
-  } catch (err2) {
-    logInvite(`Fallback port ${fallbackPort} also failed for "${to}": ${err2.message}`)
-
-    const errMessage = err2.message || lastError?.message || ''
-    const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i.test(errMessage)
-    const isRender = Boolean(process.env.RENDER)
-
-    if (isTimeout && isRender) {
-      throw new Error(
-        'Connection timeout: Render Free Tier blocks outbound SMTP ports 25, 465, and 587. Please add a free BREVO_API_KEY (HTTPS port 443) to your Render environment variables to send invites.'
-      )
-    }
-
-    if (isTimeout) {
-      throw new Error(
-        `Email delivery failed: Connection timeout. If running on cloud hosting (e.g. Render/Vercel), outbound SMTP is blocked. Set BREVO_API_KEY or RESEND_API_KEY to send via HTTPS.`
-      )
-    }
-
-    throw new Error(`Email delivery failed: ${errMessage}`)
-  }
-}
-
-/**
- * Startup diagnostic check.
- * Verifies email service without blocking server launch.
- */
-async function verifySmtp() {
-  if (!isConfigured()) {
-    logInvite('No email provider configured (HTTP API or SMTP). Email invitations disabled.')
-    return false
-  }
-
-  if (process.env.BREVO_API_KEY) {
-    logInvite('Brevo HTTP API configured (Port 443 HTTPS). Immune to cloud SMTP port blocking.')
-    return true
-  }
-
-  if (process.env.RESEND_API_KEY) {
-    logInvite('Resend HTTP API configured (Port 443 HTTPS).')
-    return true
-  }
-
-  if (process.env.SENDGRID_API_KEY) {
-    logInvite('SendGrid HTTP API configured (Port 443 HTTPS).')
-    return true
-  }
-
-  if (process.env.RENDER) {
-    logInvite('NOTICE: Backend running on Render with SMTP. Note: Render Free Tier blocks outbound SMTP ports 25, 465, and 587. To send in production, set BREVO_API_KEY in Render dashboard.')
-  }
-
-  try {
-    const transport = await createTransporter(465, true)
-    await transport.verify()
-    logInvite('SMTP connection verified successfully over port 465.')
-    return true
-  } catch (err) {
-    try {
-      const fallback = await createTransporter(587, false)
-      await fallback.verify()
-      logInvite('SMTP connection verified successfully over fallback port 587.')
-      return true
-    } catch (fallbackErr) {
-      logInvite(`SMTP startup verification warning: ${err.message || fallbackErr.message}`)
-      return false
-    }
-  }
-}
-
-/**
- * Returns a configured transporter interface for backward compatibility.
+ * Creates or reuses a single Nodemailer SMTP transporter.
+ * Authoritative: Uses exact configured host, port, and secure mode (no automatic port switching).
+ *
+ * @returns {nodemailer.Transporter | null}
  */
 function getTransporter() {
-  if (!isConfigured()) {
+  const config = getSmtpConfig()
+  if (!config.isValid) {
+    cachedTransporter = null
+    cachedSignature = ''
     return null
   }
 
+  const signature = `${config.host}:${config.port}:${config.secure}:${config.user}:${config.pass}:${config.debug}`
+  if (cachedTransporter && cachedSignature === signature) {
+    return cachedTransporter
+  }
+
+  // Configuration sanity warnings
+  if (config.port === 465 && !config.secure) {
+    console.warn('[Mail] Warning: Port 465 typically requires SMTP_SECURE=true (SSL/TLS).')
+  } else if (config.port === 587 && config.secure) {
+    console.warn('[Mail] Warning: Port 587 typically requires SMTP_SECURE=false (STARTTLS).')
+  }
+
+  cachedTransporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    disableFileAccess: true,
+    disableUrlAccess: true,
+    logger: config.debug && process.env.NODE_ENV !== 'production',
+    debug: config.debug && process.env.NODE_ENV !== 'production',
+  })
+
+  cachedSignature = signature
+  return cachedTransporter
+}
+
+/**
+ * Classifies a Nodemailer error into structured categories, backend error codes,
+ * and user-safe frontend messages. Never leaks passwords or raw stack traces.
+ *
+ * @param {Error & { code?: string, responseCode?: number, command?: string, isConfigError?: boolean, isRecipientRejected?: boolean }} err
+ * @returns {{ code: string, message: string, category: string }}
+ */
+function classifySmtpError(err) {
+  if (!err) {
+    return {
+      code: 'SEND_FAILED',
+      message: 'Could not send invitation. Please try again later.',
+      category: 'UNKNOWN',
+    }
+  }
+
+  const message = err.message || ''
+  const code = err.code || ''
+  const responseCode = err.responseCode
+
+  // 1. Missing or invalid configuration
+  if (err.isConfigError || code === 'SMTP_CONFIG_ERROR') {
+    return {
+      code: 'SMTP_CONFIG_ERROR',
+      message: 'Email service is not configured yet.',
+      category: 'CONFIGURATION',
+    }
+  }
+
+  // 2. Authentication failure (EAUTH / 535)
+  if (code === 'EAUTH' || responseCode === 535 || /invalid login|badcredentials|username and password not accepted/i.test(message)) {
+    return {
+      code: 'SMTP_AUTH_ERROR',
+      message: 'Email account authentication failed. Check the SMTP credentials.',
+      category: 'AUTHENTICATION',
+    }
+  }
+
+  // 3. DNS lookup failure (ENOTFOUND / EAI_AGAIN)
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return {
+      code: 'SMTP_NETWORK_ERROR',
+      message: 'SMTP server address could not be resolved.',
+      category: 'DNS',
+    }
+  }
+
+  // 4. Connection timeout (ETIMEDOUT / ESOCKETTIMEDOUT)
+  if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT' || /timeout|timed out/i.test(message)) {
+    const isRender = Boolean(process.env.RENDER)
+    return {
+      code: 'SMTP_TIMEOUT',
+      message: isRender
+        ? 'SMTP connection timed out. The deployment environment may block outbound SMTP traffic.'
+        : 'The email server connection timed out.',
+      category: 'TIMEOUT',
+    }
+  }
+
+  // 5. Connection refused / network failure (ECONNREFUSED / ENETUNREACH / EHOSTUNREACH)
+  if (code === 'ECONNREFUSED' || code === 'ENETUNREACH' || code === 'EHOSTUNREACH' || code === 'ECONNRESET') {
+    return {
+      code: 'SMTP_NETWORK_ERROR',
+      message: 'Could not connect to the email server.',
+      category: 'NETWORK',
+    }
+  }
+
+  // 6. TLS / SSL handshake failure (ESOCKET / CERT / TLS errors)
+  if (code === 'ESOCKET' || /tls|ssl|handshake|certificate/i.test(message)) {
+    return {
+      code: 'SMTP_TLS_ERROR',
+      message: 'Secure connection to the email server failed.',
+      category: 'TLS',
+    }
+  }
+
+  // 7. Recipient rejection (550 / 553 / rejected recipient)
+  if (responseCode === 550 || responseCode === 553 || err.isRecipientRejected) {
+    return {
+      code: 'EMAIL_REJECTED',
+      message: 'The email server rejected the recipient address.',
+      category: 'RECIPIENT',
+    }
+  }
+
   return {
-    verify: verifySmtp,
-    sendMail: (mailOptions) => sendRoomInvite({
-      to: mailOptions.to,
-      roomName: 'Watch Room',
-      roomId: 'ROOM',
-      inviterName: 'Host',
-    }),
+    code: 'SEND_FAILED',
+    message: 'Could not send invitation. Please try again later.',
+    category: 'SMTP',
   }
 }
 
 /**
- * Sends a room invitation email to a single recipient.
- *
- * @param {{ to: string, roomName: string, roomId: string, inviterName: string }} options
- * @returns {Promise<{ success: boolean, messageId?: string, provider?: string }>}
+ * Logs safe startup diagnostics without exposing passwords or credentials.
  */
-async function sendRoomInvite({ to, roomName, roomId, inviterName }) {
-  if (!isConfigured()) {
-    throw new Error('Email invitations are currently unavailable.')
+function logStartupDiagnostics() {
+  const config = getSmtpConfig()
+  console.log('[Mail] Provider: Nodemailer SMTP')
+  if (!config.isValid) {
+    console.warn(`[Mail] SMTP configuration incomplete. Missing: ${config.missing.join(', ')}`)
+    return
+  }
+  console.log(`[Mail] Host: ${config.host}`)
+  console.log(`[Mail] Port: ${config.port}`)
+  console.log(`[Mail] Secure: ${config.secure}`)
+  console.log('[Mail] User: configured')
+  console.log('[Mail] Password: configured')
+  console.log(`[Mail] From: "${config.fromName}" <${config.fromAddress}>`)
+}
+
+/**
+ * Non-blocking startup diagnostic check.
+ * Verifies SMTP connection without blocking server launch.
+ *
+ * @returns {Promise<boolean>}
+ */
+async function verifySmtp() {
+  logStartupDiagnostics()
+  const config = getSmtpConfig()
+  if (!config.isValid) {
+    return false
   }
 
-  const fromName = process.env.EMAIL_FROM_NAME || 'SyncTube'
-  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_USER || 'invites@synctube.app'
+  if (process.env.RENDER) {
+    console.log('[Mail] NOTICE: Running on Render. Render Free tier blocks outbound SMTP ports (25, 465, 587). Production email requires a hosting plan or environment with outbound SMTP egress.')
+  }
+
+  const transporter = getTransporter()
+  if (!transporter) {
+    return false
+  }
+
+  try {
+    await transporter.verify()
+    console.log('[Mail] SMTP connection verified successfully.')
+    return true
+  } catch (err) {
+    const classified = classifySmtpError(err)
+    console.warn(`[Mail] SMTP verification failed [${classified.category}]: ${err.message}`)
+    return false
+  }
+}
+
+/**
+ * Sends a room invitation email to a single recipient using Nodemailer SMTP.
+ *
+ * @param {{ to: string, roomName: string, roomId: string, inviterName: string }} options
+ * @returns {Promise<{ success: boolean, code: string, message: string, messageId?: string }>}
+ */
+async function sendRoomInvite({ to, roomName, roomId, inviterName }) {
+  const config = getSmtpConfig()
+  if (!config.isValid) {
+    const err = new Error('Email service is not configured yet.')
+    err.code = 'SMTP_CONFIG_ERROR'
+    err.isConfigError = true
+    throw err
+  }
+
+  const transporter = getTransporter()
+  if (!transporter) {
+    const err = new Error('Email service is not configured yet.')
+    err.code = 'SMTP_CONFIG_ERROR'
+    err.isConfigError = true
+    throw err
+  }
 
   // Construct direct room link on server using CLIENT_URL
   const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '')
@@ -459,29 +398,60 @@ You do not need an account to join. Simply open the link and choose a display na
 </body>
 </html>`
 
-  const subject = "You're invited to a SyncTube watch party"
-
-  // 1. Priority: HTTP API over Port 443 (Immune to Render Free Tier SMTP port blocking)
-  if (process.env.BREVO_API_KEY) {
-    return await sendViaBrevo({ to, fromName, fromAddress, subject, htmlContent, textContent })
+  const mailOptions = {
+    from: `"${config.fromName}" <${config.fromAddress}>`,
+    to,
+    subject: "You're invited to a SyncTube watch party",
+    text: textContent,
+    html: htmlContent,
+    disableFileAccess: true,
+    disableUrlAccess: true,
   }
 
-  if (process.env.RESEND_API_KEY) {
-    return await sendViaResend({ to, fromName, fromAddress, subject, htmlContent, textContent })
-  }
+  console.log(`[Mail] Dispatching invitation to "${to}" for room "${roomId}" via ${config.host}:${config.port}`)
 
-  if (process.env.SENDGRID_API_KEY) {
-    return await sendViaSendGrid({ to, fromName, fromAddress, subject, htmlContent, textContent })
-  }
+  try {
+    const info = await transporter.sendMail(mailOptions)
 
-  // 2. Fallback: Direct SMTP (Port 465 / 587)
-  return await sendViaSmtp({ to, fromName, fromAddress, subject, htmlContent, textContent, roomId })
+    // Inspect accepted / rejected
+    const accepted = Array.isArray(info.accepted) ? info.accepted : []
+    const rejected = Array.isArray(info.rejected) ? info.rejected : []
+
+    if (rejected.length > 0 && accepted.length === 0) {
+      const rejectErr = new Error(`Recipient ${to} was rejected by the email server.`)
+      rejectErr.code = 'EMAIL_REJECTED'
+      rejectErr.isRecipientRejected = true
+      throw rejectErr
+    }
+
+    console.log(`[Mail] SUCCESS: Invitation sent to "${to}" (messageId: ${info.messageId})`)
+    return {
+      success: true,
+      code: 'EMAIL_SENT',
+      message: 'Invitation sent successfully.',
+      messageId: info.messageId,
+    }
+  } catch (err) {
+    const classified = classifySmtpError(err)
+    console.warn(`[Mail] SEND failed [${classified.category}]: code=${err.code || 'NONE'}, command=${err.command || 'NONE'}, responseCode=${err.responseCode || 'NONE'}`)
+
+    const dispatchError = new Error(classified.message)
+    dispatchError.code = classified.code
+    dispatchError.userMessage = classified.message
+    dispatchError.category = classified.category
+    dispatchError.originalMessage = err.message
+    throw dispatchError
+  }
 }
 
 module.exports = {
   sendRoomInvite,
   verifySmtp,
   getTransporter,
-  isConfigured,
-  checkSmtpConfig: isConfigured, // Backward compatibility alias
+  getSmtpConfig,
+  isSmtpConfigured,
+  isConfigured: isSmtpConfigured, // Backward-compatible alias
+  checkSmtpConfig: isSmtpConfigured, // Backward-compatible alias
+  classifySmtpError,
+  logStartupDiagnostics,
 }

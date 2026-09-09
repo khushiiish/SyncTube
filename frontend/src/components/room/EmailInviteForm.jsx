@@ -102,7 +102,40 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
           duration: 3500,
         })
       } else {
-        const msg = response?.message || 'Could not send invitation.'
+        // Map backend error codes to friendly user-facing messages
+        let msg = response?.message
+        switch (response?.code) {
+          case 'SMTP_CONFIG_ERROR':
+            msg = 'Email service is not configured yet.'
+            break
+          case 'SMTP_AUTH_ERROR':
+            msg = 'Email account authentication failed. Check the SMTP credentials.'
+            break
+          case 'SMTP_NETWORK_ERROR':
+            msg = 'Could not connect to the email server.'
+            break
+          case 'SMTP_TIMEOUT':
+            msg = response?.message || 'The email server connection timed out.'
+            break
+          case 'SMTP_TLS_ERROR':
+            msg = 'Secure connection to the email server failed.'
+            break
+          case 'EMAIL_REJECTED':
+            msg = 'The email server rejected this recipient address.'
+            break
+          case 'RATE_LIMIT_EXCEEDED':
+            msg = 'Too many invitations. Please wait before trying again.'
+            break
+          case 'UNAUTHORIZED':
+            msg = 'You must be an active room participant to send invitations.'
+            break
+          case 'INVALID_EMAIL':
+            msg = response?.message || 'Please enter a valid email address.'
+            break
+          default:
+            msg = msg || 'Could not send invitation. Please try again later.'
+            break
+        }
         setError(msg)
         toast.error(msg)
       }

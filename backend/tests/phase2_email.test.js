@@ -1,9 +1,8 @@
 /**
- * Phase 2 Automated Tests — Email Invitations & SMTP Security
+ * Phase 2 Automated Tests — Email Invitations & Nodemailer SMTP Security
  */
 
 const assert = require('assert')
-const path = require('path')
 const { validateEmail } = require('../src/utils/validateEmail')
 const { escapeHtml } = require('../src/utils/escapeHtml')
 const { checkAndRecordInvite, resetRateLimits } = require('../src/services/inviteRateLimiter')
@@ -64,21 +63,70 @@ async function runPhase2Tests() {
   assert.strictEqual(rOtherSocket.allowed, true)
   console.log('  [PASS] checkAndRecordInvite enforces socket cap, cooldown, and room quota')
 
-  // 4. Email configuration detection (HTTP providers & SMTP)
-  const isConfigured = emailService.isConfigured()
+  // 4. Nodemailer SMTP configuration detection
+  const isConfigured = emailService.isSmtpConfigured()
   assert.strictEqual(typeof isConfigured, 'boolean')
-  console.log(`  [PASS] Email service detects configuration state (isConfigured: ${isConfigured})`)
+  console.log(`  [PASS] SMTP service detects configuration state (isSmtpConfigured: ${isConfigured})`)
 
-  // 5. Test Brevo HTTP provider detection
-  const origBrevo = process.env.BREVO_API_KEY
+  // 5. Strict boolean and port parsing test
+  const origHost = process.env.SMTP_HOST
+  const origPort = process.env.SMTP_PORT
+  const origSecure = process.env.SMTP_SECURE
+  const origUser = process.env.SMTP_USER
+  const origPass = process.env.SMTP_PASS
+
   try {
-    process.env.BREVO_API_KEY = 'xkeysib-mock-test-key'
-    assert.strictEqual(emailService.isConfigured(), true)
-    console.log('  [PASS] Email service detects Brevo HTTP API configuration')
+    // Test: SMTP_SECURE="false" must parse to boolean false (not true!)
+    process.env.SMTP_HOST = 'smtp.test.com'
+    process.env.SMTP_PORT = '587'
+    process.env.SMTP_SECURE = 'false'
+    process.env.SMTP_USER = 'test@test.com'
+    process.env.SMTP_PASS = 'secret'
+
+    const config587 = emailService.getSmtpConfig()
+    assert.strictEqual(config587.secure, false, 'SMTP_SECURE="false" must be boolean false')
+    assert.strictEqual(config587.port, 587)
+    assert.strictEqual(config587.isValid, true)
+
+    // Test: Missing SMTP_PASS makes config invalid
+    delete process.env.SMTP_PASS
+    const invalidConfig = emailService.getSmtpConfig()
+    assert.strictEqual(invalidConfig.isValid, false)
+    assert.strictEqual(invalidConfig.missing.includes('SMTP_PASS'), true)
+
+    console.log('  [PASS] getSmtpConfig strictly parses secure boolean and validates required fields')
   } finally {
-    if (origBrevo) process.env.BREVO_API_KEY = origBrevo
-    else delete process.env.BREVO_API_KEY
+    if (origHost !== undefined) process.env.SMTP_HOST = origHost; else delete process.env.SMTP_HOST
+    if (origPort !== undefined) process.env.SMTP_PORT = origPort; else delete process.env.SMTP_PORT
+    if (origSecure !== undefined) process.env.SMTP_SECURE = origSecure; else delete process.env.SMTP_SECURE
+    if (origUser !== undefined) process.env.SMTP_USER = origUser; else delete process.env.SMTP_USER
+    if (origPass !== undefined) process.env.SMTP_PASS = origPass; else delete process.env.SMTP_PASS
   }
+
+  // 6. Error classification helper
+  const authErr = new Error('Invalid login: 535-5.7.8 Username and Password not accepted.')
+  authErr.code = 'EAUTH'
+  const cAuth = emailService.classifySmtpError(authErr)
+  assert.strictEqual(cAuth.code, 'SMTP_AUTH_ERROR')
+  assert.strictEqual(cAuth.category, 'AUTHENTICATION')
+
+  const connErr = new Error('connect ECONNREFUSED 127.0.0.1:587')
+  connErr.code = 'ECONNREFUSED'
+  const cConn = emailService.classifySmtpError(connErr)
+  assert.strictEqual(cConn.code, 'SMTP_NETWORK_ERROR')
+
+  const timeoutErr = new Error('Connection timeout')
+  timeoutErr.code = 'ETIMEDOUT'
+  const cTimeout = emailService.classifySmtpError(timeoutErr)
+  assert.strictEqual(cTimeout.code, 'SMTP_TIMEOUT')
+
+  const rejectErr = new Error('Recipient rejected')
+  rejectErr.isRecipientRejected = true
+  const cReject = emailService.classifySmtpError(rejectErr)
+  assert.strictEqual(cReject.code, 'EMAIL_REJECTED')
+  assert.strictEqual(cReject.category, 'RECIPIENT')
+
+  console.log('  [PASS] classifySmtpError properly categorizes EAUTH, ECONNREFUSED, ETIMEDOUT, and recipient rejections')
 }
 
 module.exports = { runPhase2Tests }

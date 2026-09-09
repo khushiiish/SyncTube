@@ -124,7 +124,44 @@ SyncTube decouples the **Socket Connection (`socket.id`)** from **Participant Id
 | `CLOUDINARY_API_KEY` | Optional | `123456789012345` | Cloudinary API key |
 | `CLOUDINARY_API_SECRET` | Optional | `secret_abc123` | Cloudinary API secret |
 
-> **Note on Optional Services**: If SMTP or Cloudinary credentials are omitted, the backend starts with clean diagnostic warnings. Video sync, room creation, text chat, and queue operations remain 100% functional.
+### 📧 Email Invitations (Nodemailer + SMTP ONLY)
+
+SyncTube uses **Nodemailer + SMTP ONLY** for email invitations. No third-party email SDKs or HTTP providers (e.g. Brevo, Resend, SendGrid) are used.
+
+#### Required Backend Variables:
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_16_character_app_password
+EMAIL_FROM=your_email@gmail.com
+EMAIL_FROM_NAME=SyncTube
+```
+
+#### Gmail SMTP Setup:
+1. In your Google Account, enable **2-Step Verification** (Security -> 2-Step Verification).
+2. Go to **Security -> App Passwords** (or search "App Passwords").
+3. Create a new App Password named `SyncTube`.
+4. Copy the generated 16-character password into `backend/.env` as `SMTP_PASS=...`.
+5. For port 587, set `SMTP_PORT=587` and `SMTP_SECURE=false` (STARTTLS).
+   For port 465, set `SMTP_PORT=465` and `SMTP_SECURE=true` (Implicit TLS).
+
+#### Diagnostic Verification:
+Test your SMTP credentials and delivery with the built-in diagnostic tool:
+```bash
+# Verify connection & credentials only:
+npm run test:smtp
+
+# Send a real test invitation to an inbox:
+npm run test:smtp -- your_test_email@example.com
+```
+
+#### ⚠️ Cloud Hosting Egress Warning:
+* Certain cloud hosting platforms (specifically **Render's Free Tier**) block all outbound TCP traffic on SMTP ports 25, 465, and 587 by firewall.
+* Nodemailer SMTP requires network access to the SMTP server. For production deployment on Render, an upgraded instance tier (e.g. Starter) or an infrastructure provider that permits outbound SMTP egress is required.
+
+---
 
 ### Frontend (`frontend/.env`)
 
