@@ -125,7 +125,7 @@ export default function EmailInviteForm({ roomId, socket, isConnected, onClose }
             msg = 'Email service is busy. Please try again shortly.'
             break
           case 'SMTP_PROVIDER_LIMIT':
-            msg = 'Email sending is temporarily unavailable.'
+            msg = 'Email sending limit has been reached. Please try again later.'
             break
           case 'RATE_LIMIT_EXCEEDED':
             msg = 'Too many invitations. Please try again later.'

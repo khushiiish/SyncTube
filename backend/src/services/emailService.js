@@ -9,10 +9,12 @@ let cachedSignature = ''
  * Extracts, parses, and validates SMTP configuration from environment variables.
  *
  * Strict parsing rules:
+ * - Brevo detection: host equals 'smtp-relay.brevo.com'.
+ * - EMAIL_FROM: strictly required for Brevo; no automatic fallback to SMTP_USER.
+ * - Brevo port: port 2525 with secure=false required to avoid Render Free firewall blocks (25, 465, 587).
  * - SMTP_SECURE: strictly checks for 'true' (Boolean("false") === true is prevented).
- * - SMTP_PORT: parsed to integer with 1-65535 boundary validation (default 587).
+ * - SMTP_PORT: parsed to integer with 1-65535 boundary validation.
  * - SMTP_HOST / SMTP_USER / SMTP_PASS: trimmed strings.
- * - EMAIL_FROM: falls back strictly to SMTP_USER (no fake domain fallback).
  *
  * @returns {{
  *   host: string,
@@ -22,20 +24,26 @@ let cachedSignature = ''
  *   pass: string,
  *   fromAddress: string,
  *   fromName: string,
+ *   isBrevo: boolean,
  *   debug: boolean,
  *   isValid: boolean,
- *   missing: string[]
+ *   missing: string[],
+ *   invalidBrevoPair: boolean,
+ *   invalidGmailPair: boolean
  * }}
  */
 function getSmtpConfig() {
   const host = process.env.SMTP_HOST ? process.env.SMTP_HOST.trim() : ''
-  const rawPort = process.env.SMTP_PORT ? String(process.env.SMTP_PORT).trim() : '587'
+  const isBrevo = host.toLowerCase() === 'smtp-relay.brevo.com'
+  const rawPort = process.env.SMTP_PORT ? String(process.env.SMTP_PORT).trim() : (isBrevo ? '2525' : '587')
   const port = parseInt(rawPort, 10)
   const secure = String(process.env.SMTP_SECURE || '').trim().toLowerCase() === 'true'
   const user = process.env.SMTP_USER ? process.env.SMTP_USER.trim() : ''
   // Trim surrounding whitespace only; preserve legitimate password characters
   const pass = process.env.SMTP_PASS ? process.env.SMTP_PASS.trim() : ''
-  const fromAddress = (process.env.EMAIL_FROM && process.env.EMAIL_FROM.trim()) || user
+  const rawFrom = process.env.EMAIL_FROM ? process.env.EMAIL_FROM.trim() : ''
+  // For Brevo, EMAIL_FROM must be an explicit verified sender; do NOT fall back to SMTP_USER
+  const fromAddress = isBrevo ? rawFrom : (rawFrom || user)
   const fromName = (process.env.EMAIL_FROM_NAME && process.env.EMAIL_FROM_NAME.trim()) || 'SyncTube'
   const debug = String(process.env.SMTP_DEBUG || '').trim().toLowerCase() === 'true'
 
@@ -44,6 +52,22 @@ function getSmtpConfig() {
   if (!user) missing.push('SMTP_USER')
   if (!pass) missing.push('SMTP_PASS')
   if (!rawPort || isNaN(port) || port <= 0 || port > 65535) missing.push('SMTP_PORT')
+
+  // Brevo configuration validation
+  let invalidBrevoPair = false
+  if (isBrevo) {
+    if (!fromAddress) {
+      missing.push('EMAIL_FROM')
+    }
+    if (port !== 2525) {
+      invalidBrevoPair = true
+      missing.push(`Invalid Brevo configuration: Port ${port} is not supported on Render Free (Render Free blocks 25, 465, 587; Brevo requires SMTP_PORT=2525)`)
+    }
+    if (port === 2525 && secure) {
+      invalidBrevoPair = true
+      missing.push('Invalid Brevo configuration: Port 2525 requires SMTP_SECURE=false (STARTTLS)')
+    }
+  }
 
   // Gmail port and secure mode compatibility validation
   let invalidGmailPair = false
@@ -57,19 +81,21 @@ function getSmtpConfig() {
     }
   }
 
-  const isValid = missing.length === 0 && !invalidGmailPair
+  const isValid = missing.length === 0 && !invalidBrevoPair && !invalidGmailPair
 
   return {
     host,
-    port: isNaN(port) ? 587 : port,
+    port: isNaN(port) ? (isBrevo ? 2525 : 587) : port,
     secure,
     user,
     pass,
     fromAddress,
     fromName,
+    isBrevo,
     debug,
     isValid,
     missing,
+    invalidBrevoPair,
     invalidGmailPair,
   }
 }
@@ -125,8 +151,8 @@ function getTransporter() {
     debug: config.debug && process.env.NODE_ENV !== 'production',
   }
 
-  // For 587 STARTTLS, enforce secure TLS upgrade without disabling certificate validation
-  if (config.port === 587 && !config.secure) {
+  // For 587 STARTTLS (non-Brevo), enforce secure TLS upgrade without disabling certificate validation
+  if (config.port === 587 && !config.secure && !config.isBrevo) {
     transportOptions.requireTLS = true
   }
 
@@ -158,9 +184,10 @@ function classifySmtpError(err) {
 
   // 1. Missing or invalid configuration
   if (err.isConfigError || code === 'SMTP_CONFIG_ERROR') {
+    const isSenderMissing = /sender|EMAIL_FROM/i.test(message)
     return {
       code: 'SMTP_CONFIG_ERROR',
-      message: 'Email invitations are not configured.',
+      message: isSenderMissing ? 'Email sender is not configured.' : 'Email invitations are not configured.',
       category: 'CONFIGURATION',
     }
   }
@@ -215,7 +242,7 @@ function classifySmtpError(err) {
   }
 
   // 7. Sender address rejected (MAIL FROM)
-  if (command === 'MAIL FROM' || /sender address rejected|from address rejected/i.test(message)) {
+  if (command === 'MAIL FROM' || /sender address rejected|from address rejected|unauthorized sender|sender not allowed/i.test(message)) {
     return {
       code: 'EMAIL_SENDER_REJECTED',
       message: 'Email invitations are temporarily unavailable.',
@@ -245,7 +272,7 @@ function classifySmtpError(err) {
   if (/rate limit|quota|too many messages|daily sending limit|sending quota/i.test(message)) {
     return {
       code: 'SMTP_PROVIDER_LIMIT',
-      message: 'Email sending is temporarily unavailable.',
+      message: 'Email sending limit has been reached. Please try again later.',
       category: 'LIMIT',
     }
   }
@@ -262,7 +289,8 @@ function classifySmtpError(err) {
  */
 function logStartupDiagnostics() {
   const config = getSmtpConfig()
-  console.log('[Mail] Provider: Nodemailer SMTP')
+  const provider = config.isBrevo ? 'Brevo SMTP via Nodemailer' : 'Nodemailer SMTP'
+  console.log(`[Mail] Provider: ${provider}`)
   if (!config.isValid) {
     console.warn(`[Mail] SMTP configuration incomplete. Missing: ${config.missing.join(', ')}`)
     return
@@ -270,9 +298,9 @@ function logStartupDiagnostics() {
   console.log(`[Mail] Host: ${config.host}`)
   console.log(`[Mail] Port: ${config.port}`)
   console.log(`[Mail] Secure: ${config.secure}`)
-  console.log('[Mail] User: configured')
-  console.log('[Mail] Password: configured')
-  console.log(`[Mail] From: "${config.fromName}" <${config.fromAddress}>`)
+  console.log(`[Mail] SMTP User: ${config.user ? 'configured' : '[missing]'}`)
+  console.log(`[Mail] SMTP Key: ${config.pass ? 'configured' : '[missing]'}`)
+  console.log(`[Mail] Sender: ${config.fromAddress ? 'configured' : '[missing]'}`)
 }
 
 /**
@@ -289,7 +317,12 @@ async function verifySmtp() {
   }
 
   if (process.env.RENDER) {
-    console.log('[Mail] NOTICE: Running on Render. Render Free tier blocks outbound SMTP ports (25, 465, 587). Production email requires a hosting plan or environment with outbound SMTP egress.')
+    if (config.isBrevo && config.port === 2525) {
+      console.log('[Mail] Running on Render.')
+      console.log("[Mail] Using Brevo SMTP port 2525, which avoids Render Free's blocked SMTP ports 25, 465 and 587.")
+    } else {
+      console.log('[Mail] NOTICE: Running on Render. Render Free tier blocks outbound SMTP ports (25, 465, 587). Production email requires Brevo SMTP on port 2525.')
+    }
   }
 
   const transporter = getTransporter()
@@ -317,7 +350,7 @@ async function verifySmtp() {
 async function sendRoomInvite({ to, roomName, roomId, inviterName }) {
   const config = getSmtpConfig()
   if (!config.isValid) {
-    const err = new Error('Email service is not configured yet.')
+    const err = new Error(config.missing.includes('EMAIL_FROM') ? 'Email sender is not configured.' : 'Email service is not configured yet.')
     err.code = 'SMTP_CONFIG_ERROR'
     err.isConfigError = true
     throw err
@@ -331,8 +364,8 @@ async function sendRoomInvite({ to, roomName, roomId, inviterName }) {
     throw err
   }
 
-  // Construct direct room link on server using CLIENT_URL
-  const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '')
+  // Construct direct room link on server using trimmed CLIENT_URL
+  const clientUrl = String(process.env.CLIENT_URL || 'http://localhost:5173').trim().replace(/\/$/, '')
   const inviteUrl = `${clientUrl}/room/${encodeURIComponent(roomId)}`
 
   // Sanitize user inputs for HTML
@@ -476,6 +509,9 @@ You do not need an account to join. Simply open the link and choose a display na
   } catch (err) {
     const classified = classifySmtpError(err)
     console.warn(`[Mail] SEND failed [${classified.category}]: code=${err.code || 'NONE'}, command=${err.command || 'NONE'}, responseCode=${err.responseCode || 'NONE'}`)
+    if (classified.code === 'EMAIL_SENDER_REJECTED' && config.isBrevo) {
+      console.warn(`[Mail] Verify EMAIL_FROM in Brevo dashboard: "${config.fromAddress}" must be a verified sender.`)
+    }
 
     const dispatchError = new Error(classified.message)
     dispatchError.code = classified.code

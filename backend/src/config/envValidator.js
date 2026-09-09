@@ -16,7 +16,16 @@ function validateEnv() {
     process.env.CLERK_PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY
   }
 
-  const isSmtpSet = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+  const host = (process.env.SMTP_HOST || '').trim().toLowerCase()
+  const isBrevo = host === 'smtp-relay.brevo.com'
+  const rawPort = process.env.SMTP_PORT ? String(process.env.SMTP_PORT).trim() : (isBrevo ? '2525' : '587')
+  const port = parseInt(rawPort, 10)
+  const isSmtpSet = Boolean(
+    process.env.SMTP_HOST &&
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASS &&
+    (!isBrevo || process.env.EMAIL_FROM)
+  )
 
   const diagnostics = {
     nodeEnv:              process.env.NODE_ENV || 'development',
@@ -29,6 +38,8 @@ function validateEnv() {
     cloudinaryConfigured: Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET),
   }
 
+  const providerTag = isBrevo ? 'Brevo SMTP via Nodemailer' : 'Nodemailer SMTP'
+
   console.log('====================================================')
   console.log('  SyncTube Backend - Configuration Diagnostic')
   console.log('====================================================')
@@ -38,7 +49,7 @@ function validateEnv() {
   console.log(`  MongoDB URI:          ${diagnostics.mongoUri}`)
   console.log(`  Clerk Publishable:    ${diagnostics.clerkPub}`)
   console.log(`  Clerk Secret:         ${diagnostics.clerkSecret}`)
-  console.log(`  SMTP Service:         ${diagnostics.smtpConfigured ? `ENABLED (${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587})` : 'DISABLED (invites unavailable)'}`)
+  console.log(`  SMTP Service:         ${diagnostics.smtpConfigured ? `ENABLED [${providerTag}] (${process.env.SMTP_HOST}:${port})` : 'DISABLED (invites unavailable)'}`)
   console.log(`  Cloudinary Storage:   ${diagnostics.cloudinaryConfigured ? 'ENABLED' : 'DISABLED (voice messages unavailable)'}`)
   console.log('====================================================')
 
@@ -51,8 +62,18 @@ function validateEnv() {
   if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) {
     warnings.push('CLERK authentication keys are missing. Authenticated endpoints and token verification will fail.')
   }
+  if (isBrevo && !process.env.EMAIL_FROM) {
+    warnings.push('EMAIL_FROM is required for Brevo SMTP. Brevo rejects emails unless sent from a verified sender address.')
+  }
+  if (isBrevo && port !== 2525) {
+    warnings.push(`Brevo SMTP is configured on port ${port}. Render Free blocks ports 25, 465, and 587. Please set SMTP_PORT=2525.`)
+  }
   if (process.env.RENDER && isSmtpSet) {
-    warnings.push('Render Free tier blocks outbound SMTP ports (25, 465, 587). If invite timeouts occur in production, hosting with outbound SMTP egress or a paid plan is required.')
+    if (isBrevo && port === 2525) {
+      // Brevo on port 2525 avoids Render Free's blocked ports; no warning needed
+    } else {
+      warnings.push('Render Free tier blocks outbound SMTP ports (25, 465, 587). Please configure Brevo SMTP with SMTP_HOST=smtp-relay.brevo.com and SMTP_PORT=2525.')
+    }
   }
 
   if (warnings.length > 0) {

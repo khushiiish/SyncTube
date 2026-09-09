@@ -29,24 +29,26 @@ async function runDiagnostic() {
 
   const config = emailService.getSmtpConfig()
 
-  console.log(`[Mail] Provider:       Nodemailer SMTP`)
-  console.log(`[Mail] Host:           ${config.host || '[NOT SET]'}`)
-  console.log(`[Mail] Port:           ${config.port}`)
-  console.log(`[Mail] Secure:         ${config.secure}`)
-  console.log(`[Mail] User:           ${config.user ? '[configured]' : '[NOT SET]'}`)
-  console.log(`[Mail] Password:       ${config.pass ? '[configured]' : '[NOT SET]'}`)
-  console.log(`[Mail] From:           "${config.fromName}" <${config.fromAddress || '[NOT SET]'}>`)
+  console.log(`Provider: ${config.isBrevo ? 'Brevo SMTP via Nodemailer' : 'Nodemailer SMTP'}`)
+  console.log(`Host: ${config.host || '[NOT SET]'}`)
+  console.log(`Port: ${config.port}`)
+  console.log(`Secure: ${config.secure}`)
+  console.log(`User: ${config.user ? 'configured' : '[NOT SET]'}`)
+  console.log(`Password: ${config.pass ? 'configured' : '[NOT SET]'}`)
+  console.log(`Sender: ${config.fromAddress ? 'configured' : '[NOT SET]'}`)
   console.log('====================================================')
 
   if (!config.isValid) {
     console.error(`\n❌ [Mail] SMTP_CONFIG_ERROR: Configuration incomplete.`)
-    console.error(`Missing required variables: ${config.missing.join(', ')}`)
+    console.error(`Missing required variables / issues: ${config.missing.join(', ')}`)
     console.error(`\nPlease configure these in your backend/.env file:`)
-    console.error(`  SMTP_HOST=smtp.gmail.com`)
-    console.error(`  SMTP_PORT=587`)
+    console.error(`  SMTP_HOST=smtp-relay.brevo.com`)
+    console.error(`  SMTP_PORT=2525`)
     console.error(`  SMTP_SECURE=false`)
-    console.error(`  SMTP_USER=your_email@gmail.com`)
-    console.error(`  SMTP_PASS=your_google_app_password`)
+    console.error(`  SMTP_USER=your_brevo_smtp_login`)
+    console.error(`  SMTP_PASS=your_brevo_smtp_key`)
+    console.error(`  EMAIL_FROM=your_verified_sender@example.com`)
+    console.error(`  EMAIL_FROM_NAME=SyncTube`)
     process.exit(1)
   }
 
@@ -62,8 +64,18 @@ async function runDiagnostic() {
     console.error(`  Code:    ${classified.code}`)
     console.error(`  Detail:  ${err.message}`)
     console.error(`  Summary: ${classified.message}`)
-    if (classified.category === 'TIMEOUT' || classified.category === 'NETWORK') {
-      console.error(`\nNote: If running in a cloud environment (e.g. Render Free), outbound SMTP ports (25, 465, 587) are blocked by the host.`)
+    if (/unauthorized ip address|525/i.test(err.message)) {
+      console.error(`\n⚠️  Brevo IP Restriction Detected (525 5.7.1):`)
+      console.error(`  Brevo is blocking connections because IP restriction is active on your Brevo account.`)
+      console.error(`  To fix this:`)
+      console.error(`  1. Log in to your Brevo account (https://app.brevo.com).`)
+      console.error(`  2. Click your Profile / Account name (top right) -> Settings -> Security -> Authorized IPs.`)
+      console.error(`  3. In "Blocking of unauthorized IP addresses", find "API keys and SMTP keys" and click "Deactivate".`)
+      console.error(`  (Deactivating this is required because Render Free uses dynamic cloud IPs).`)
+    } else if (classified.category === 'TIMEOUT' || classified.category === 'NETWORK') {
+      if (config.port !== 2525) {
+        console.error(`\nNote: If running on Render Free, outbound SMTP ports (25, 465, 587) are blocked. Use Brevo SMTP with SMTP_PORT=2525.`)
+      }
     }
     process.exit(1)
   }
