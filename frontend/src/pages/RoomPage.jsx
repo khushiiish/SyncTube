@@ -11,6 +11,8 @@ import MobileRoomDrawer from '../components/room/MobileRoomDrawer'
 import ConnectionBanner from '../components/room/ConnectionBanner'
 import RoomAlreadyOpen from '../components/room/RoomAlreadyOpen'
 import RoomAuthGate from '../components/room/RoomAuthGate'
+import LiveVoiceFloatingBar from '../components/room/LiveVoiceFloatingBar'
+import { LiveVoiceProvider } from '../context/LiveVoiceContext'
 import { useRoomContext } from '../context/RoomContext'
 import { useSocketContext } from '../context/SocketContext'
 import { EVENTS, emitJoinRoom, emitSyncRequest, emitLeaveRoom } from '../services/socketService'
@@ -535,66 +537,69 @@ export default function RoomPage() {
 
   // 4. Joined successfully -> Render full watch room
   return (
-    <div className="h-screen w-full overflow-hidden flex flex-col bg-[#131315] text-[#e5e1e4]">
-      <RoomHeader />
+    <LiveVoiceProvider>
+      <div className="h-screen w-full overflow-hidden flex flex-col bg-[#131315] text-[#e5e1e4]">
+        <RoomHeader />
 
-      <main className="flex-1 flex pt-[56px] sm:pt-[72px] h-full overflow-hidden">
-        <section className="flex-1 relative flex flex-col items-center p-3 sm:p-4 lg:p-6 pb-20 md:pb-6 bg-[#0e0e10] overflow-y-auto scrollbar-thin">
-          <div className="absolute inset-0 z-0 flex items-center justify-center opacity-20 pointer-events-none">
-            <div className="w-3/4 h-3/4 bg-[#ffb3ad]/10 rounded-full blur-[160px]" />
-          </div>
+        <main className="flex-1 flex pt-[56px] sm:pt-[72px] h-full overflow-hidden">
+          <section className="flex-1 relative flex flex-col items-center p-3 sm:p-4 lg:p-6 pb-20 md:pb-6 bg-[#0e0e10] overflow-y-auto scrollbar-thin">
+            <div className="absolute inset-0 z-0 flex items-center justify-center opacity-20 pointer-events-none">
+              <div className="w-3/4 h-3/4 bg-[#ffb3ad]/10 rounded-full blur-[160px]" />
+            </div>
 
-          <div className="relative z-10 w-full flex flex-col items-center gap-4 sm:gap-6 max-w-5xl mx-auto my-auto py-2 sm:py-4">
-            <QueueInput />
-            <VideoPlayer />
+            <div className="relative z-10 w-full flex flex-col items-center gap-4 sm:gap-6 max-w-5xl mx-auto my-auto py-2 sm:py-4">
+              <QueueInput />
+              <VideoPlayer />
 
-            {videoState?.videoId && (
-              <div className="w-full flex justify-between items-start px-1">
-                <div className="min-w-0">
-                  <h2 className="font-[Geist,sans-serif] font-semibold text-[17px] sm:text-[20px] tracking-[-0.02em] text-[#e5e1e4] mb-1 truncate">
-                    {videoState?.title || room?.currentVideo?.title || 'Watch Party'}
-                  </h2>
-                  <div className="flex items-center gap-3 text-[#e4beba] font-[Geist,sans-serif] text-[12px] sm:text-[13px]">
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-                      {participants?.length || 0} Watching
-                    </span>
-                    <span>•</span>
-                    <span className="text-[#ff5451]">Synced</span>
+              {videoState?.videoId && (
+                <div className="w-full flex justify-between items-start px-1">
+                  <div className="min-w-0">
+                    <h2 className="font-[Geist,sans-serif] font-semibold text-[17px] sm:text-[20px] tracking-[-0.02em] text-[#e5e1e4] mb-1 truncate">
+                      {videoState?.title || room?.currentVideo?.title || 'Watch Party'}
+                    </h2>
+                    <div className="flex items-center gap-3 text-[#e4beba] font-[Geist,sans-serif] text-[12px] sm:text-[13px]">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+                        {participants?.length || 0} Watching
+                      </span>
+                      <span>•</span>
+                      <span className="text-[#ff5451]">Synced</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </section>
+              )}
+            </div>
+          </section>
 
-        {/* Desktop Sidebar (hidden on mobile, visible on md: and above) */}
-        <Sidebar />
-      </main>
+          {/* Desktop Sidebar (hidden on mobile, visible on md: and above) */}
+          <Sidebar />
+        </main>
 
-      {/* Mobile Drawer (slides up on mobile when active tab is selected) */}
-      <MobileRoomDrawer
-        isOpen={Boolean(mobileTab)}
-        activeTab={mobileTab || 'chat'}
-        onSelectTab={(tab) => {
-          setMobileTab(tab)
-          if (tab === 'chat') setHasUnreadChat(false)
-        }}
-        onClose={() => setMobileTab(null)}
-        onLeave={handleLeaveRoom}
-      />
+        {/* Mobile Drawer (slides up on mobile when active tab is selected) */}
+        <MobileRoomDrawer
+          isOpen={Boolean(mobileTab)}
+          activeTab={mobileTab || 'chat'}
+          onSelectTab={(tab) => {
+            setMobileTab(tab)
+            if (tab === 'chat') setHasUnreadChat(false)
+          }}
+          onClose={() => setMobileTab(null)}
+          onLeave={handleLeaveRoom}
+        />
 
-      {/* Mobile Bottom Navigation Bar (fixed at bottom on mobile) */}
-      <MobileRoomNav
-        activeTab={mobileTab}
-        onSelectTab={handleSelectMobileTab}
-        unreadChat={hasUnreadChat}
-        queueCount={queue?.length || 0}
-        participantCount={participants?.length || 0}
-        onLeave={handleLeaveRoom}
-      />
+        {/* Mobile Bottom Navigation Bar (fixed at bottom on mobile) */}
+        <MobileRoomNav
+          activeTab={mobileTab}
+          onSelectTab={handleSelectMobileTab}
+          unreadChat={hasUnreadChat}
+          queueCount={queue?.length || 0}
+          participantCount={participants?.length || 0}
+          onLeave={handleLeaveRoom}
+        />
 
-      <ConnectionBanner />
-    </div>
+        <ConnectionBanner />
+        <LiveVoiceFloatingBar />
+      </div>
+    </LiveVoiceProvider>
   )
 }

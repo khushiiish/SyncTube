@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, MessageSquare, Mail, Mic } from 'lucide-react'
+import { Send, MessageSquare, Mail, Mic, Radio } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Avatar from '../ui/Avatar'
 import EmailInviteForm from './EmailInviteForm'
 import VoiceMessageBubble from './VoiceMessageBubble'
 import VoiceRecorder from './VoiceRecorder'
+import LiveVoicePanel from './LiveVoicePanel'
 import { useRoomContext } from '../../context/RoomContext'
 import { useSocketContext } from '../../context/SocketContext'
+import { useLiveVoice } from '../../context/LiveVoiceContext'
 import { emitSendChat, emitSendVoiceMessage } from '../../services/socketService'
 
 /**
@@ -28,6 +30,13 @@ export default function Chat() {
   const messagesEndRef = useRef(null)
   const { chatMessages, currentUser, room } = useRoomContext()
   const { socket, isConnected } = useSocketContext()
+  const {
+    isLiveVoiceJoined,
+    isConnecting: isVoiceConnecting,
+    liveParticipants,
+    joinLiveVoice,
+    leaveLiveVoice,
+  } = useLiveVoice()
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -145,6 +154,11 @@ export default function Chat() {
 
       {/* Input area */}
       <div className="p-3 sm:p-4 border-t border-[#27272A] bg-[#1a191d] shrink-0">
+        {/* Active Live Voice Audio Panel */}
+        <AnimatePresence>
+          {isLiveVoiceJoined && <LiveVoicePanel />}
+        </AnimatePresence>
+
         {/* Inline Email Invite Form */}
         <AnimatePresence>
           {showEmailInvite && (
@@ -157,19 +171,69 @@ export default function Chat() {
           )}
         </AnimatePresence>
 
-        {/* Email Invite toggle button */}
-        <div className="flex items-center justify-between mb-2 px-1">
+        {/* Three Communication Options Bar */}
+        <div className="flex items-center gap-1.5 p-1 bg-[#131315] border border-[#27272A] rounded-xl mb-3">
+          {/* Option 1: 💬 Send Text Message */}
           <button
             type="button"
-            onClick={() => setShowEmailInvite(!showEmailInvite)}
-            className="flex items-center gap-1.5 text-[12px] font-[Geist,sans-serif] font-medium text-[#e4beba]/80 hover:text-[#ffb3ad] transition-colors group cursor-pointer"
+            id="chat-mode-text-btn"
+            onClick={() => setIsRecordingVoice(false)}
+            className={`
+              flex-1 py-1.5 px-2 rounded-lg font-[Geist,sans-serif] text-[12px] font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer
+              ${!isRecordingVoice
+                ? 'bg-[#201f22] text-[#ffb3ad] border border-[#ffb3ad]/20 shadow-xs'
+                : 'text-[#e4beba]/70 hover:text-[#e5e1e4]'
+              }
+            `}
           >
-            <Mail className="w-3.5 h-3.5 text-[#ffb3ad] group-hover:scale-110 transition-transform" />
-            <span>{showEmailInvite ? 'Hide email invite' : 'Invite by email'}</span>
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Message</span>
+          </button>
+
+          {/* Option 2: 🎙️ Record Voice & Send */}
+          <button
+            type="button"
+            id="chat-mode-record-btn"
+            onClick={() => setIsRecordingVoice(true)}
+            className={`
+              flex-1 py-1.5 px-2 rounded-lg font-[Geist,sans-serif] text-[12px] font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer
+              ${isRecordingVoice
+                ? 'bg-[#ffb3ad]/20 text-[#ffb3ad] border border-[#ffb3ad]/30 shadow-xs'
+                : 'text-[#e4beba]/70 hover:text-[#e5e1e4]'
+              }
+            `}
+          >
+            <Mic className="w-3.5 h-3.5" />
+            <span>Record Voice</span>
+          </button>
+
+          {/* Option 3: 🔴 Join / Leave Live Voice */}
+          <button
+            type="button"
+            id="chat-mode-live-voice-btn"
+            onClick={isLiveVoiceJoined ? leaveLiveVoice : joinLiveVoice}
+            disabled={isVoiceConnecting}
+            className={`
+              flex-1 py-1.5 px-2 rounded-lg font-[Geist,sans-serif] text-[12px] font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50
+              ${isLiveVoiceJoined
+                ? 'bg-[#ff5451]/20 text-[#ff8b87] border border-[#ff5451]/40'
+                : 'text-[#ff5451] hover:bg-[#ff5451]/10'
+              }
+            `}
+            title={isLiveVoiceJoined ? 'Click to Leave Live Voice' : 'Join real-time two-way audio'}
+          >
+            <Radio className={`w-3.5 h-3.5 ${isLiveVoiceJoined ? 'animate-pulse text-[#ff5451]' : ''}`} />
+            <span className="truncate">
+              {isVoiceConnecting
+                ? 'Connecting...'
+                : isLiveVoiceJoined
+                ? `Voice (${1 + (liveParticipants?.length || 0)})`
+                : 'Live Voice'}
+            </span>
           </button>
         </div>
 
-        {/* Message composer / Voice recorder */}
+        {/* Mode 1 & 2 Renderers */}
         {isRecordingVoice ? (
           <VoiceRecorder
             onSendVoice={handleSendVoice}
@@ -189,7 +253,7 @@ export default function Chat() {
               className="flex-1 bg-transparent text-[#e5e1e4] font-[Inter,sans-serif] text-[13px] sm:text-[14px] focus:outline-none placeholder:text-[#e4beba]/40 min-w-0"
             />
 
-            {/* Mic button to start voice message */}
+            {/* Quick Mic shortcut button to switch to voice recording */}
             <button
               type="button"
               id="start-voice-btn"
@@ -211,6 +275,25 @@ export default function Chat() {
             </button>
           </div>
         )}
+
+        {/* Footer info & Email Invite toggle */}
+        <div className="flex items-center justify-between mt-2 px-1">
+          <button
+            type="button"
+            onClick={() => setShowEmailInvite(!showEmailInvite)}
+            className="flex items-center gap-1.5 text-[11px] font-[Geist,sans-serif] text-[#e4beba]/70 hover:text-[#ffb3ad] transition-colors group cursor-pointer"
+          >
+            <Mail className="w-3 h-3 text-[#ffb3ad] group-hover:scale-110 transition-transform" />
+            <span>{showEmailInvite ? 'Hide email invite' : 'Invite friends by email'}</span>
+          </button>
+
+          {isLiveVoiceJoined && (
+            <span className="text-[11px] font-[Geist,sans-serif] text-emerald-400/80 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live Audio Active
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )

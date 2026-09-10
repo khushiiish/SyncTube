@@ -14,6 +14,7 @@ const { checkAndRecordChat } = require('../services/chatRateLimiter')
 const { checkControlRate, clearControlRate } = require('../services/videoRateLimiter')
 const { recordVoiceAsset } = require('../services/voiceCleanupService')
 const { isCloudinaryConfigured } = require('../config/cloudinary')
+const liveVoiceService = require('../services/liveVoiceService')
 
 /**
  * Socket event constants — single source of truth for event names.
@@ -49,6 +50,17 @@ const EVENTS = {
   CHAT_MESSAGE:               'chat_message',
   ERROR:                      'error',
   PRIMARY_CONNECTION_CHANGED: 'primary_connection_changed',
+
+  // Live Voice Signaling
+  VOICE_JOIN:                 'voice:join',
+  VOICE_LEAVE:                'voice:leave',
+  VOICE_OFFER:                'voice:offer',
+  VOICE_ANSWER:               'voice:answer',
+  VOICE_ICE_CANDIDATE:        'voice:ice-candidate',
+  VOICE_MUTE:                 'voice:mute',
+  VOICE_PARTICIPANT_JOINED:   'voice:participant-joined',
+  VOICE_PARTICIPANT_LEFT:     'voice:participant-left',
+  VOICE_PARTICIPANT_MUTED:    'voice:participant-muted',
 }
 
 /**
@@ -242,6 +254,13 @@ function registerRoomHandlers(socket, io) {
               io.to(oldSid).emit(EVENTS.ROOM_TAKEN_OVER, takeoverPayload)
               io.to(oldSid).emit('session-replaced', takeoverPayload)
               io.to(oldSid).emit('session_replaced', takeoverPayload)
+              const removedVoice = liveVoiceService.removeParticipant(room.roomId, oldSid)
+              if (removedVoice) {
+                io.to(room.roomId).emit(EVENTS.VOICE_PARTICIPANT_LEFT, {
+                  socketId: oldSid,
+                  participantId: removedVoice.participantId,
+                })
+              }
               const oldSock = io.sockets.sockets.get(oldSid)
               if (oldSock) {
                 oldSock.leave(room.roomId)
@@ -284,6 +303,14 @@ function registerRoomHandlers(socket, io) {
     if (!targetRoomId) return
 
     try {
+      const removedVoice = liveVoiceService.removeParticipant(targetRoomId, socket.id)
+      if (removedVoice) {
+        socket.to(targetRoomId).emit(EVENTS.VOICE_PARTICIPANT_LEFT, {
+          socketId: socket.id,
+          participantId: socket.participantId,
+        })
+      }
+
       const res = await roomService.removeSocketFromParticipant(targetRoomId, socket.id)
       socket.leave(targetRoomId)
 
@@ -341,6 +368,14 @@ function registerRoomHandlers(socket, io) {
     clearControlRate(socket.id)
     const roomId = socket.roomId
     if (!roomId) return
+
+    const removedVoice = liveVoiceService.removeParticipant(roomId, socket.id)
+    if (removedVoice) {
+      socket.to(roomId).emit(EVENTS.VOICE_PARTICIPANT_LEFT, {
+        socketId: socket.id,
+        participantId: socket.participantId,
+      })
+    }
 
     try {
       const res = await roomService.removeSocketFromParticipant(roomId, socket.id)
@@ -666,6 +701,13 @@ function registerRoomHandlers(socket, io) {
 
         // 1. Notify and disconnect ALL sockets belonging to this participant, clearing room metadata
         targetSockets.forEach(sid => {
+          const removedVoice = liveVoiceService.removeParticipant(room.roomId, sid)
+          if (removedVoice) {
+            io.to(room.roomId).emit(EVENTS.VOICE_PARTICIPANT_LEFT, {
+              socketId: sid,
+              participantId: targetId,
+            })
+          }
           io.to(sid).emit(EVENTS.KICKED, {
             roomId: room.roomId,
             reason: 'removed_by_host',
@@ -1154,6 +1196,108 @@ function registerRoomHandlers(socket, io) {
         message: err.userMessage || err.message || 'Could not send invitation. Please try again later.',
       })
     }
+  })
+
+  /* -------------------------------------------------------
+   * WebRTC Live Voice Signaling Handlers
+   * -------------------------------------------------------
+   */
+  socket.on(EVENTS.VOICE_JOIN, async ({ roomId }, callback) => {
+    const ack = typeof callback === 'function' ? callback : () => {}
+    const targetRoomId = roomId || socket.roomId
+    if (!targetRoomId || !isSocketInRoom(socket, targetRoomId)) {
+      return ack({ success: false, message: 'Must be an active room participant to join Live Voice.' })
+    }
+
+    try {
+      // 1. Get existing voice participants before adding newcomer
+      const existing = liveVoiceService.getParticipants(targetRoomId)
+        .filter(p => p.socketId !== socket.id)
+
+      // 2. Add this socket to voice registry
+      const participant = liveVoiceService.addParticipant(targetRoomId, socket.id, {
+        participantId: socket.participantId || socket.id,
+        username: socket.username || 'Participant',
+        isMuted: false,
+      })
+
+      // 3. Notify other participants in the room that this user joined Live Voice
+      socket.to(targetRoomId).emit(EVENTS.VOICE_PARTICIPANT_JOINED, {
+        socketId: socket.id,
+        participantId: participant.participantId,
+        username: participant.username,
+        isMuted: false,
+      })
+
+      return ack({
+        success: true,
+        participants: existing,
+      })
+    } catch (err) {
+      console.error('[Socket] voice:join error:', err.message)
+      return ack({ success: false, message: 'Failed to join Live Voice.' })
+    }
+  })
+
+  socket.on(EVENTS.VOICE_LEAVE, async ({ roomId }) => {
+    const targetRoomId = roomId || socket.roomId
+    if (!targetRoomId) return
+
+    const removed = liveVoiceService.removeParticipant(targetRoomId, socket.id)
+    if (removed) {
+      socket.to(targetRoomId).emit(EVENTS.VOICE_PARTICIPANT_LEFT, {
+        socketId: socket.id,
+        participantId: socket.participantId,
+      })
+    }
+  })
+
+  socket.on(EVENTS.VOICE_OFFER, async ({ roomId, toSocketId, offer }) => {
+    const targetRoomId = roomId || socket.roomId
+    if (!targetRoomId || !isSocketInRoom(socket, targetRoomId)) return
+    if (!toSocketId || !offer) return
+
+    io.to(toSocketId).emit(EVENTS.VOICE_OFFER, {
+      fromSocketId: socket.id,
+      fromParticipantId: socket.participantId,
+      fromUsername: socket.username,
+      offer,
+    })
+  })
+
+  socket.on(EVENTS.VOICE_ANSWER, async ({ roomId, toSocketId, answer }) => {
+    const targetRoomId = roomId || socket.roomId
+    if (!targetRoomId || !isSocketInRoom(socket, targetRoomId)) return
+    if (!toSocketId || !answer) return
+
+    io.to(toSocketId).emit(EVENTS.VOICE_ANSWER, {
+      fromSocketId: socket.id,
+      fromParticipantId: socket.participantId,
+      answer,
+    })
+  })
+
+  socket.on(EVENTS.VOICE_ICE_CANDIDATE, async ({ roomId, toSocketId, candidate }) => {
+    const targetRoomId = roomId || socket.roomId
+    if (!targetRoomId || !isSocketInRoom(socket, targetRoomId)) return
+    if (!toSocketId || !candidate) return
+
+    io.to(toSocketId).emit(EVENTS.VOICE_ICE_CANDIDATE, {
+      fromSocketId: socket.id,
+      candidate,
+    })
+  })
+
+  socket.on(EVENTS.VOICE_MUTE, async ({ roomId, isMuted }) => {
+    const targetRoomId = roomId || socket.roomId
+    if (!targetRoomId || !isSocketInRoom(socket, targetRoomId)) return
+
+    liveVoiceService.setMute(targetRoomId, socket.id, isMuted)
+    socket.to(targetRoomId).emit(EVENTS.VOICE_PARTICIPANT_MUTED, {
+      socketId: socket.id,
+      participantId: socket.participantId,
+      isMuted: Boolean(isMuted),
+    })
   })
 }
 

@@ -35,6 +35,17 @@ export const EVENTS = {
   ERROR:                      'error',
   QUEUE_SYNC:                 'queue_sync',
   PRIMARY_CONNECTION_CHANGED: 'primary_connection_changed',
+
+  // Live Voice Signaling
+  VOICE_JOIN:                 'voice:join',
+  VOICE_LEAVE:                'voice:leave',
+  VOICE_OFFER:                'voice:offer',
+  VOICE_ANSWER:               'voice:answer',
+  VOICE_ICE_CANDIDATE:        'voice:ice-candidate',
+  VOICE_MUTE:                 'voice:mute',
+  VOICE_PARTICIPANT_JOINED:   'voice:participant-joined',
+  VOICE_PARTICIPANT_LEFT:     'voice:participant-left',
+  VOICE_PARTICIPANT_MUTED:    'voice:participant-muted',
 }
 
 /**
@@ -151,3 +162,36 @@ export function emitQueueNext(socket, { roomId, currentVideoId }) {
   if (!socket) return
   socket.emit('queue_next', { roomId, currentVideoId })
 }
+
+/* --- Live Voice WebRTC Emitters --- */
+
+export function emitVoiceJoin(socket, { roomId }, callback) {
+  if (!socket) return
+  socket.emit(EVENTS.VOICE_JOIN, { roomId }, callback)
+}
+
+export function emitVoiceLeave(socket, { roomId }) {
+  if (!socket) return
+  socket.emit(EVENTS.VOICE_LEAVE, { roomId })
+}
+
+export function emitVoiceOffer(socket, { roomId, toSocketId, offer }) {
+  if (!socket) return
+  socket.emit(EVENTS.VOICE_OFFER, { roomId, toSocketId, offer })
+}
+
+export function emitVoiceAnswer(socket, { roomId, toSocketId, answer }) {
+  if (!socket) return
+  socket.emit(EVENTS.VOICE_ANSWER, { roomId, toSocketId, answer })
+}
+
+export function emitVoiceIceCandidate(socket, { roomId, toSocketId, candidate }) {
+  if (!socket) return
+  socket.emit(EVENTS.VOICE_ICE_CANDIDATE, { roomId, toSocketId, candidate })
+}
+
+export function emitVoiceMute(socket, { roomId, isMuted }) {
+  if (!socket) return
+  socket.emit(EVENTS.VOICE_MUTE, { roomId, isMuted })
+}
+
