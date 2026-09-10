@@ -9,10 +9,17 @@ const { getAuth } = require('@clerk/express')
  */
 function requireAuthenticatedUser(req, res, next) {
   try {
-    const auth = getAuth(req)
-    if (!auth || !auth.userId) {
+    let auth = null
+    if (req.auth && (req.auth.userId || req.auth.sub)) {
+      auth = req.auth
+    } else {
+      auth = getAuth(req)
+    }
+
+    if (!auth || (!auth.userId && !auth.sub)) {
       return res.status(401).json({
-        message: 'Authentication required to create a room.',
+        message: 'Authentication required. Please sign in with your Google account.',
+        code: 'AUTHENTICATION_REQUIRED',
       })
     }
 
@@ -20,7 +27,8 @@ function requireAuthenticatedUser(req, res, next) {
     next()
   } catch (err) {
     return res.status(401).json({
-      message: 'Authentication required to create a room.',
+      message: 'Authentication required. Please sign in with your Google account.',
+      code: 'AUTHENTICATION_REQUIRED',
     })
   }
 }

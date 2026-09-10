@@ -39,9 +39,14 @@ export const createRoom = (data, token) => {
 
 /**
  * Join an existing room.
+ * Requires Clerk session Bearer token.
  * @param {{ username: string, roomId: string }} data
+ * @param {string} [token] - Clerk session JWT
  */
-export const joinRoom = (data) => api.post('/rooms/join', data)
+export const joinRoom = (data, token) => {
+  const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {}
+  return api.post('/rooms/join', data, config)
+}
 
 /**
  * Fetch room details by ID.

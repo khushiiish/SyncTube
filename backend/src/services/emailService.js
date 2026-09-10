@@ -386,7 +386,7 @@ Room Code: ${roomId}
 Join the watch party directly:
 ${inviteUrl}
 
-You do not need an account to join. Simply open the link and choose a display name to sync in seconds.
+Sign in with your Google account to join the watch party in seconds.
 
 — The SyncTube Team
 `
@@ -460,10 +460,10 @@ You do not need an account to join. Simply open the link and choose a display na
             </td>
           </tr>
 
-          <!-- Guest Note -->
+          <!-- Auth Note -->
           <tr>
             <td style="border-top: 1px solid #27272A; padding-top: 20px; font-size: 13px; line-height: 20px; color: #e4beba; opacity: 0.7;">
-              ✨ <strong>No account needed:</strong> Simply open the link and pick a guest nickname to join the watch room instantly.
+              ✨ <strong>Quick entry:</strong> Simply open the link and sign in with your Google account to join the watch party in seconds.
             </td>
           </tr>
         </table>

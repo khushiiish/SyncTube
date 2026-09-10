@@ -113,7 +113,8 @@ function registerRoomHandlers(socket, io) {
    */
   socket.on(EVENTS.JOIN_ROOM, async (payload, callback) => {
     const ack = typeof callback === 'function' ? callback : () => {}
-    const { roomId, username, guestDeviceId, clerkToken, tabId, takeover } = payload || {}
+    const { roomId, username, clerkToken: payloadToken, tabId, takeover } = payload || {}
+    const effectiveToken = payloadToken || socket.handshake?.auth?.token || socket.handshake?.headers?.authorization?.replace(/^Bearer\s+/i, '')
 
     try {
       if (!roomId || typeof roomId !== 'string') {
@@ -123,6 +124,15 @@ function registerRoomHandlers(socket, io) {
         return ack({ success: false, code: 'INVALID_USERNAME', message: 'Username is required.' })
       }
 
+      // Enforce mandatory Google/Clerk authentication
+      if (!effectiveToken || typeof effectiveToken !== 'string' || !effectiveToken.trim()) {
+        return ack({
+          success: false,
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Authentication required. Please sign in with your Google account to join the room.',
+        })
+      }
+
       const safeTabId = (tabId && typeof tabId === 'string') ? tabId.trim().slice(0, 64) : null
 
       // Serialize join mutations for this room
@@ -130,12 +140,12 @@ function registerRoomHandlers(socket, io) {
         // 1. Derive authoritative identity hash
         let identity
         try {
-          identity = await deriveIdentity({ guestDeviceId, clerkToken })
+          identity = await deriveIdentity({ clerkToken: effectiveToken.trim() })
         } catch (authErr) {
           return ack({
             success: false,
             code: authErr.code || 'INVALID_AUTH',
-            message: authErr.message || 'Identity verification failed.',
+            message: authErr.message || 'Identity verification failed. Please sign in with your Google account.',
           })
         }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, SlidersHorizontal, RefreshCw, Tv, Plus, ArrowLeft } from 'lucide-react'
-import { useAuth, useUser } from '@clerk/react'
+import { useAuth, useUser, useClerk } from '@clerk/react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import RoomCard from '../components/rooms/RoomCard'
@@ -18,7 +18,8 @@ export default function RoomsPage() {
   const navigate = useNavigate()
   const { setRoom, setCurrentUser } = useRoomContext()
   const { socket } = useSocketContext()
-  const { getToken } = useAuth()
+  const { getToken, isSignedIn } = useAuth()
+  const { openSignIn } = useClerk()
   const { user } = useUser()
 
   // Room list states
@@ -73,6 +74,10 @@ export default function RoomsPage() {
 
   // Join handler from card
   const handleJoinFromCard = (roomId) => {
+    if (!isSignedIn) {
+      openSignIn()
+      return
+    }
     setPrefillCode(roomId)
     setShowJoin(true)
   }
@@ -118,16 +123,34 @@ export default function RoomsPage() {
   const handleJoinRoom = async ({ username, roomId }) => {
     setIsLoadingJoin(true)
     try {
-      const data = await joinRoom({ username, roomId })
+      const token = await getToken()
+      if (!token) {
+        toast.error('Please sign in with Google to join a room.')
+        openSignIn()
+        return
+      }
+
+      const data = await joinRoom({ username, roomId }, token)
       const { room } = data
 
       setRoom(room)
       setRoomSession(room.roomId, { username })
-      setCurrentUser({ username, role: 'participant', socketId: socket?.id })
+      setCurrentUser({
+        username,
+        role: 'participant',
+        socketId: socket?.id,
+        clerkUserId: user?.id,
+      })
 
       navigate(`/room/${room.roomId}`)
     } catch (err) {
-      toast.error(err.message || 'Room not found. Check the code.')
+      const errMsg = err.message || 'Room not found. Check the code.'
+      if (errMsg.toLowerCase().includes('authentication') || errMsg.includes('401')) {
+        toast.error('Please sign in with Google to join a room.')
+        openSignIn()
+      } else {
+        toast.error(errMsg)
+      }
     } finally {
       setIsLoadingJoin(false)
       setShowJoin(false)
@@ -159,6 +182,10 @@ export default function RoomsPage() {
       <Navbar
         onCreateRoom={triggerCreateRoom}
         onJoinRoom={() => {
+          if (!isSignedIn) {
+            openSignIn()
+            return
+          }
           setPrefillCode('')
           setShowJoin(true)
         }}

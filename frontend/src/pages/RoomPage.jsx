@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { useAuth } from '@clerk/react'
+import { useAuth, useUser, useClerk } from '@clerk/react'
 import RoomHeader from '../components/room/RoomHeader'
 import VideoPlayer from '../components/room/VideoPlayer'
 import QueueInput from '../components/room/QueueInput'
 import Sidebar from '../components/room/Sidebar'
 import ConnectionBanner from '../components/room/ConnectionBanner'
 import RoomAlreadyOpen from '../components/room/RoomAlreadyOpen'
+import RoomAuthGate from '../components/room/RoomAuthGate'
 import { useRoomContext } from '../context/RoomContext'
 import { useSocketContext } from '../context/SocketContext'
 import { EVENTS, emitJoinRoom, emitSyncRequest } from '../services/socketService'
@@ -31,7 +32,9 @@ import { useRoomTabSync } from '../hooks/useRoomTabSync'
 export default function RoomPage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
-  const { getToken, isSignedIn } = useAuth()
+  const { getToken, isSignedIn, isLoaded } = useAuth()
+  const { user } = useUser()
+  const { openSignIn } = useClerk()
   const hasJoinedToastRef = useRef(false)
   const joinedSuccessfullyInThisTabRef = useRef(false)
   const executeJoinRef = useRef(null)
@@ -84,19 +87,32 @@ export default function RoomPage() {
     validate()
   }, [roomId, setRoom, room, navigate])
 
-  // Check currentUser: if empty, try recovering from local room session before redirecting
+  // Check currentUser: if empty and signed in, try recovering from local room session
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return
+
     if (!currentUser && roomId) {
       const storedSession = getRoomSession(roomId)
       if (storedSession && storedSession.username) {
         // Recover nickname and initialize currentUser so tab can attempt join
-        setCurrentUser({ username: storedSession.username, role: 'participant' })
-      } else {
-        // No prior session on this device -> redirect to landing page to enter nickname
-        navigate('/', { state: { joinRoomId: roomId } })
+        setCurrentUser({
+          username: storedSession.username,
+          role: 'participant',
+          clerkUserId: user?.id,
+        })
       }
     }
-  }, [currentUser, roomId, navigate, setCurrentUser])
+  }, [currentUser, roomId, isLoaded, isSignedIn, user?.id, setCurrentUser])
+
+  const handleConfirmDisplayName = (confirmedName) => {
+    setRoomSession(roomId, { username: confirmedName })
+    setCurrentUser({
+      username: confirmedName,
+      role: 'participant',
+      clerkUserId: user?.id,
+    })
+    setJoinStatus('joining')
+  }
 
   // Subscribe to all socket events and manage connection/reconnection flow
   useEffect(() => {
@@ -233,9 +249,11 @@ export default function RoomPage() {
     // Execute authoritative join with fresh credentials, tab identity, and device identity
     const executeJoin = async (takeover = false) => {
       try {
-        let clerkToken = null
-        if (isSignedIn) {
-          clerkToken = await getToken()
+        const clerkToken = await getToken()
+        if (!clerkToken) {
+          toast.error('Google authentication required to join this room.')
+          setJoinStatus('auth_required')
+          return
         }
         const guestDeviceId = getGuestDeviceId()
         const tabId = getTabId()
@@ -266,6 +284,7 @@ export default function RoomPage() {
               role:                res.role,
               socketId:            socket.id,
               isPrimaryConnection: res.isPrimaryConnection,
+              clerkUserId:         user?.id,
             })
 
             if (!hasJoinedToastRef.current) {
@@ -273,7 +292,11 @@ export default function RoomPage() {
               toast.success(`Joined "${room?.roomName || 'Party'}"!`)
             }
           } else {
-            if (res.code === 'ROOM_ACTIVE_ELSEWHERE') {
+            if (res.code === 'AUTHENTICATION_REQUIRED') {
+              toast.error(res.message || 'Google authentication required to join this room.')
+              setJoinStatus('auth_required')
+              openSignIn()
+            } else if (res.code === 'ROOM_ACTIVE_ELSEWHERE') {
               if (joinedSuccessfullyInThisTabRef.current) {
                 // This tab was previously joined, but room was switched elsewhere (e.g. reconnected after takeover)
                 toast('Room switched to another tab.', { icon: '🔄' })
@@ -359,7 +382,52 @@ export default function RoomPage() {
     }
   }
 
-  // 1. Room already open elsewhere -> Show dedicated Switch Here screen
+  // 0. Clerk Loading Gate
+  if (!isLoaded) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#131315] text-[#e5e1e4] p-4 relative overflow-hidden">
+        <div className="absolute inset-0 z-0 flex items-center justify-center opacity-20 pointer-events-none">
+          <div className="w-[400px] h-[400px] bg-[#ffb3ad]/10 rounded-full blur-[140px]" />
+        </div>
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-[#ffb3ad] border-t-transparent rounded-full animate-spin" />
+          <p className="font-[Geist,sans-serif] text-[15px] font-medium text-[#e4beba]">
+            Authenticating...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // 1. Unauthenticated Gate: require Google sign-in
+  if (!isSignedIn || joinStatus === 'auth_required') {
+    return (
+      <RoomAuthGate
+        roomId={roomId}
+        roomName={room?.roomName}
+        isSignedIn={false}
+        onSignIn={() => openSignIn()}
+        onHome={() => navigate('/')}
+      />
+    )
+  }
+
+  // 2. Authenticated but no username set yet: confirm/customize display name
+  if (!currentUser?.username) {
+    return (
+      <RoomAuthGate
+        roomId={roomId}
+        roomName={room?.roomName}
+        isSignedIn={true}
+        user={user}
+        onConfirmDisplayName={handleConfirmDisplayName}
+        onHome={() => navigate('/')}
+        isSubmitting={joinStatus === 'joining'}
+      />
+    )
+  }
+
+  // 3. Room already open elsewhere -> Show dedicated Switch Here screen
   if (joinStatus === 'active_elsewhere' || joinStatus === 'switching') {
     return (
       <RoomAlreadyOpen
@@ -372,7 +440,7 @@ export default function RoomPage() {
     )
   }
 
-  // 2. Checking / joining loading gate (prevents mounting player/chat before join confirmation)
+  // 4. Checking / joining loading gate (prevents mounting player/chat before join confirmation)
   if (joinStatus === 'checking' || joinStatus === 'joining') {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-[#131315] text-[#e5e1e4] p-4 relative overflow-hidden">
@@ -382,7 +450,7 @@ export default function RoomPage() {
         <div className="relative z-10 flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-3 border-[#ffb3ad] border-t-transparent rounded-full animate-spin" />
           <p className="font-[Geist,sans-serif] text-[15px] font-medium text-[#e4beba]">
-            Checking room...
+            Connecting to watch party...
           </p>
         </div>
       </div>

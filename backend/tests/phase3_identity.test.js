@@ -11,24 +11,31 @@ const Room = require('../src/models/Room')
 async function runPhase3Tests() {
   console.log('\n--- Running Phase 3: Identity & Multi-Tab Sync Tests ---')
 
-  // 1. Identity Service — Guest & Clerk
+  // 1. Identity Service — Mandatory Auth & Clerk Token
   const testUuid = '12345678-1234-4234-8234-123456789abc'
   assert.strictEqual(UUID_REGEX.test(testUuid), true, 'Valid UUID should pass regex')
   assert.strictEqual(UUID_REGEX.test('not-a-uuid'), false, 'Invalid string should fail regex')
 
-  const guestIdentity = await deriveIdentity({ guestDeviceId: testUuid })
-  assert.strictEqual(guestIdentity.isGuest, true)
-  assert.strictEqual(typeof guestIdentity.identityHash, 'string')
-  assert.strictEqual(guestIdentity.identityHash.length, 64)
-
-  const expectedHash = crypto.createHash('sha256').update(`guest:${testUuid}`).digest('hex')
-  assert.strictEqual(guestIdentity.identityHash, expectedHash)
+  // Mandatory Authentication: Reject unauthenticated joins
+  try {
+    await deriveIdentity({})
+    assert.fail('Should have rejected unauthenticated deriveIdentity without clerkToken')
+  } catch (err) {
+    assert.strictEqual(err.code, 'AUTHENTICATION_REQUIRED')
+  }
 
   try {
-    await deriveIdentity({ guestDeviceId: 'malicious-input' })
-    assert.fail('Should have rejected invalid guestDeviceId')
+    await deriveIdentity({ clerkToken: '   ' })
+    assert.fail('Should have rejected empty whitespace clerkToken')
   } catch (err) {
-    assert.strictEqual(err.code, 'INVALID_IDENTITY')
+    assert.strictEqual(err.code, 'AUTHENTICATION_REQUIRED')
+  }
+
+  try {
+    await deriveIdentity({ guestDeviceId: testUuid })
+    assert.fail('Should have rejected guest-only join attempt without clerkToken')
+  } catch (err) {
+    assert.strictEqual(err.code, 'AUTHENTICATION_REQUIRED')
   }
 
   // Missing CLERK_SECRET_KEY test
@@ -41,7 +48,15 @@ async function runPhase3Tests() {
     assert.strictEqual(err.code, 'CONFIG_ERROR')
   }
   process.env.CLERK_SECRET_KEY = originalClerkSecret || 'sk_test_mock'
-  console.log('  [PASS] deriveIdentity generates deterministic hashes and validates UUIDs')
+
+  // Invalid token should fail with INVALID_AUTH
+  try {
+    await deriveIdentity({ clerkToken: 'invalid.jwt.token' })
+    assert.fail('Should have failed with INVALID_AUTH on forged token')
+  } catch (err) {
+    assert.strictEqual(err.code, 'INVALID_AUTH')
+  }
+  console.log('  [PASS] deriveIdentity enforces mandatory Clerk authentication and validates tokens')
 
   // 2. Disconnect Grace Manager
   let graceFired = false

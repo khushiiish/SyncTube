@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
+import { useUser } from '@clerk/react'
 import { X, LogIn } from 'lucide-react'
 import Button from '../ui/Button'
 
@@ -10,11 +11,24 @@ import Button from '../ui/Button'
  * On submit: calls onSubmit({ username, roomId })
  */
 export default function JoinRoomModal({ isOpen, onClose, onSubmit, isLoading, prefillCode = '' }) {
+  const { user } = useUser()
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm()
+
+  const defaultDisplayName =
+    user?.fullName?.trim() ||
+    user?.firstName?.trim() ||
+    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    ''
 
   useEffect(() => {
     if (prefillCode) setValue('roomId', prefillCode)
   }, [prefillCode, setValue])
+
+  useEffect(() => {
+    if (defaultDisplayName && isOpen) {
+      setValue('username', defaultDisplayName)
+    }
+  }, [defaultDisplayName, isOpen, setValue])
 
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose() }
@@ -67,9 +81,16 @@ export default function JoinRoomModal({ isOpen, onClose, onSubmit, isLoading, pr
                 </button>
               </div>
 
-              <p className="font-[Inter,sans-serif] text-[14px] text-[#e4beba] mb-6 relative z-10">
+              <p className="font-[Inter,sans-serif] text-[14px] text-[#e4beba] mb-4 relative z-10">
                 Enter an invite code to join an existing session.
               </p>
+
+              {user && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-[#201f22]/60 border border-[#27272A] rounded-lg mb-4 relative z-10 text-xs text-[#e4beba]">
+                  <span className="w-2 h-2 rounded-full bg-[#34A853]"></span>
+                  <span className="truncate">Signed in with Google as <strong className="text-[#e5e1e4]">{user.primaryEmailAddress?.emailAddress || user.fullName}</strong></span>
+                </div>
+              )}
 
               <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4 relative z-10">
                 {/* Username */}

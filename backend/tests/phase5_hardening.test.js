@@ -141,6 +141,24 @@ async function runPhase5Tests() {
   console.log('  [PASS] DELETE /api/rooms/:id strictly enforces Clerk authentication and creator ownership')
 
   // ---------------------------------------------------------------------------
+  // 4b. REST Room Join Mandatory Google Authentication
+  // ---------------------------------------------------------------------------
+  const requireAuthenticatedUser = require('../src/middlewares/requireAuthenticatedUser')
+  const unauthJoinReq = { body: { roomId: 'SECURE_ROOM_1', username: 'Joiner' }, auth: {} }
+  const unauthJoinRes = createMockRes()
+  let nextCalled = false
+  requireAuthenticatedUser(unauthJoinReq, unauthJoinRes, () => { nextCalled = true })
+  assert.strictEqual(unauthJoinRes.statusCode, 401, 'Unauthenticated join request must return 401')
+  assert.strictEqual(unauthJoinRes.jsonPayload.code, 'AUTHENTICATION_REQUIRED')
+  assert.strictEqual(nextCalled, false, 'Unauthenticated join must not call next()')
+
+  const authJoinReq = { body: { roomId: 'SECURE_ROOM_1', username: 'Joiner' }, auth: { userId: 'user_google_123' } }
+  const authJoinRes = createMockRes()
+  requireAuthenticatedUser(authJoinReq, authJoinRes, () => { nextCalled = true })
+  assert.strictEqual(nextCalled, true, 'Authenticated join request must pass middleware')
+  console.log('  [PASS] POST /api/rooms/join strictly enforces Clerk Google authentication')
+
+  // ---------------------------------------------------------------------------
   // 5. REST Room Leak Prevention (hostSocketId is not exposed)
   // ---------------------------------------------------------------------------
   const getRoomReq = { params: { id: 'SECURE_ROOM_1' } }

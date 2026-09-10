@@ -22,53 +22,43 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
  * @param {string|null} [params.clerkToken]
  * @returns {Promise<{ identityHash: string, clerkUserId: string|null, isGuest: boolean }>}
  */
-async function deriveIdentity({ guestDeviceId, clerkToken }) {
-  // 1. Authenticated Clerk user branch
-  if (clerkToken && typeof clerkToken === 'string') {
-    const secretKey = process.env.CLERK_SECRET_KEY
-    if (!secretKey) {
-      const error = new Error('Server authentication configuration is missing (CLERK_SECRET_KEY).')
-      error.code = 'CONFIG_ERROR'
-      throw error
-    }
-
-    try {
-      const payload = await verifyToken(clerkToken, { secretKey })
-      if (!payload || !payload.sub) {
-        throw new Error('Invalid Clerk token payload.')
-      }
-
-      const clerkUserId = payload.sub
-      const identityKey = `clerk:${clerkUserId}`
-      const identityHash = crypto.createHash('sha256').update(identityKey).digest('hex')
-
-      return {
-        identityHash,
-        clerkUserId,
-        isGuest: false,
-      }
-    } catch (err) {
-      const error = new Error(`Authentication token verification failed: ${err.message}`)
-      error.code = 'INVALID_AUTH'
-      throw error
-    }
-  }
-
-  // 2. Guest user branch
-  if (!guestDeviceId || typeof guestDeviceId !== 'string' || !UUID_REGEX.test(guestDeviceId.trim())) {
-    const error = new Error('A valid guest device identifier is required for unauthenticated access.')
-    error.code = 'INVALID_IDENTITY'
+async function deriveIdentity({ clerkToken }) {
+  // Enforce mandatory Clerk Google authentication token
+  if (!clerkToken || typeof clerkToken !== 'string' || !clerkToken.trim()) {
+    const error = new Error('Authentication required. Please sign in with your Google account.')
+    error.code = 'AUTHENTICATION_REQUIRED'
     throw error
   }
 
-  const normalizedDeviceId = guestDeviceId.trim().toLowerCase()
-  const identityKey = `guest:${normalizedDeviceId}`
-  const identityHash = crypto.createHash('sha256').update(identityKey).digest('hex')
+  const secretKey = process.env.CLERK_SECRET_KEY
+  if (!secretKey) {
+    const error = new Error('Server authentication configuration is missing (CLERK_SECRET_KEY).')
+    error.code = 'CONFIG_ERROR'
+    throw error
+  }
 
-  return {
-    identityHash,
-    clerkUserId: null,
-    isGuest: true,
+  try {
+    const payload = await verifyToken(clerkToken.trim(), { secretKey })
+    if (!payload || !payload.sub) {
+      const error = new Error('Invalid authentication token payload.')
+      error.code = 'INVALID_AUTH'
+      throw error
+    }
+
+    const clerkUserId = payload.sub
+    const identityKey = `clerk:${clerkUserId}`
+    const identityHash = crypto.createHash('sha256').update(identityKey).digest('hex')
+
+    return {
+      identityHash,
+      clerkUserId,
+      isGuest: false,
+    }
+  } catch (err) {
+    if (err.code === 'CONFIG_ERROR') throw err
+    const error = new Error(`Authentication token verification failed: ${err.message}`)
+    error.code = 'INVALID_AUTH'
+    throw error
   }
 }
 

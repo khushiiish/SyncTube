@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { useAuth, useUser } from '@clerk/react'
+import { useAuth, useUser, useClerk } from '@clerk/react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import HeroSection from '../components/landing/HeroSection'
@@ -22,7 +22,8 @@ export default function LandingPage() {
   const location = useLocation()
   const { setRoom, setCurrentUser } = useRoomContext()
   const { socket } = useSocketContext()
-  const { getToken } = useAuth()
+  const { getToken, isSignedIn } = useAuth()
+  const { openSignIn } = useClerk()
   const { user } = useUser()
 
   const [showCreate, setShowCreate] = useState(false)
@@ -35,6 +36,10 @@ export default function LandingPage() {
   const { handleCreateRoom: triggerCreateRoom } = useCreateRoomGate(() => setShowCreate(true))
 
   const openJoin = (code = '') => {
+    if (!isSignedIn) {
+      openSignIn()
+      return
+    }
     setPrefillCode(code)
     setShowJoin(true)
   }
@@ -44,7 +49,7 @@ export default function LandingPage() {
       openJoin(location.state.joinRoomId)
       window.history.replaceState({}, document.title)
     }
-  }, [location])
+  }, [location]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreateRoom = async ({ username, roomName }) => {
     setIsLoadingCreate(true)
@@ -86,16 +91,34 @@ export default function LandingPage() {
   const handleJoinRoom = async ({ username, roomId }) => {
     setIsLoadingJoin(true)
     try {
-      const data = await joinRoom({ username, roomId })
+      const token = await getToken()
+      if (!token) {
+        toast.error('Please sign in with Google to join a room.')
+        openSignIn()
+        return
+      }
+
+      const data = await joinRoom({ username, roomId }, token)
       const { room } = data
 
       setRoom(room)
       setRoomSession(room.roomId, { username })
-      setCurrentUser({ username, role: 'participant', socketId: socket?.id })
+      setCurrentUser({
+        username,
+        role: 'participant',
+        socketId: socket?.id,
+        clerkUserId: user?.id,
+      })
 
       navigate(`/room/${room.roomId}`)
     } catch (err) {
-      toast.error(err.message || 'Room not found. Check the code and try again.')
+      const errMsg = err.message || 'Room not found. Check the code and try again.'
+      if (errMsg.toLowerCase().includes('authentication') || errMsg.includes('401')) {
+        toast.error('Please sign in with Google to join a room.')
+        openSignIn()
+      } else {
+        toast.error(errMsg)
+      }
     } finally {
       setIsLoadingJoin(false)
       setShowJoin(false)

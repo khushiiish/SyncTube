@@ -38,7 +38,7 @@ export default function Navbar({ onCreateRoom, onJoinRoom }) {
       <div className="hidden md:flex items-center gap-3">
         <button
           id="nav-join-btn"
-          onClick={onJoinRoom}
+          onClick={() => (isSignedIn ? onJoinRoom?.() : openSignIn())}
           className="px-4 py-2 text-[14px] font-medium text-[#e5e1e4] border border-[#27272A] rounded-lg hover:bg-[#201f22] transition-all duration-200 font-[Geist,sans-serif]"
         >
           Join Room
@@ -99,7 +99,17 @@ export default function Navbar({ onCreateRoom, onJoinRoom }) {
           animate={{ opacity: 1, y: 0 }}
           className="absolute top-full left-0 right-0 glass-floating border-t border-[#27272A] p-4 flex flex-col gap-3 md:hidden"
         >
-          <button onClick={() => { setMobileOpen(false); onJoinRoom?.(); }} className="w-full py-2.5 text-center text-[14px] border border-[#27272A] rounded-lg text-[#e5e1e4] hover:bg-[#201f22] transition-colors font-[Geist,sans-serif]">
+          <button
+            onClick={() => {
+              setMobileOpen(false)
+              if (isSignedIn) {
+                onJoinRoom?.()
+              } else {
+                openSignIn()
+              }
+            }}
+            className="w-full py-2.5 text-center text-[14px] border border-[#27272A] rounded-lg text-[#e5e1e4] hover:bg-[#201f22] transition-colors font-[Geist,sans-serif]"
+          >
             Join Room
           </button>
           <button onClick={() => { setMobileOpen(false); onCreateRoom?.(); }} className="w-full py-2.5 text-center text-[14px] font-bold text-white bg-[#ff5451] rounded-lg hover:bg-[#ffb3ad] hover:text-[#68000a] transition-all font-[Geist,sans-serif]">

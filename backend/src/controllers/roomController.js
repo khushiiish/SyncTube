@@ -45,7 +45,9 @@ async function joinRoom(req, res, next) {
     const { username, roomId } = req.body
 
     if (!username?.trim()) return res.status(400).json({ message: 'Username is required.' })
-    if (!roomId?.trim())   return res.status(400).json({ message: 'Room code is required.' })
+    // Verified Clerk user ID from authentication middleware
+    const auth = req.auth || {}
+    const clerkUserId = auth.userId || null
 
     const room = await roomService.findRoom(roomId.trim())
 
