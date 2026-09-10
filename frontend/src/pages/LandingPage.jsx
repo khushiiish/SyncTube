@@ -56,7 +56,8 @@ export default function LandingPage() {
     try {
       const token = await getToken()
       if (!token) {
-        toast.error('Please sign in again to create a room.')
+        toast.error('Authentication required. Please sign in again.')
+        openSignIn()
         return
       }
 
@@ -76,11 +77,12 @@ export default function LandingPage() {
       toast.success(`Room "${room.roomName}" created!`)
       navigate(`/room/${room.roomId}`)
     } catch (err) {
-      const errMsg = err.message || 'Failed to create room'
+      const errMsg = err.message || ''
       if (errMsg.toLowerCase().includes('authentication') || errMsg.includes('401')) {
-        toast.error('Please sign in again to create a room.')
+        toast.error('Authentication required. Please sign in again.')
+        openSignIn()
       } else {
-        toast.error(errMsg)
+        toast.error('Unable to create room. Please try again.')
       }
     } finally {
       setIsLoadingCreate(false)
@@ -93,7 +95,7 @@ export default function LandingPage() {
     try {
       const token = await getToken()
       if (!token) {
-        toast.error('Please sign in with Google to join a room.')
+        toast.error('Authentication required. Please sign in again.')
         openSignIn()
         return
       }
@@ -112,12 +114,12 @@ export default function LandingPage() {
 
       navigate(`/room/${room.roomId}`)
     } catch (err) {
-      const errMsg = err.message || 'Room not found. Check the code and try again.'
+      const errMsg = err.message || ''
       if (errMsg.toLowerCase().includes('authentication') || errMsg.includes('401')) {
-        toast.error('Please sign in with Google to join a room.')
+        toast.error('Authentication required. Please sign in again.')
         openSignIn()
       } else {
-        toast.error(errMsg)
+        toast.error('Unable to join room. Please check the room code.')
       }
     } finally {
       setIsLoadingJoin(false)

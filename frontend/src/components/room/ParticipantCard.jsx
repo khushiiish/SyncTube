@@ -33,7 +33,7 @@ export default function ParticipantCard({ participant }) {
   }
 
   const handleRemove = () => {
-    if (!confirm(`Remove ${participant.username} from the room?`)) return
+    if (!window.confirm(`Remove ${participant.username} from the room?`)) return
     emitRemoveParticipant(socket, {
       roomId: room.roomId,
       targetParticipantId: participant.participantId,
@@ -42,7 +42,7 @@ export default function ParticipantCard({ participant }) {
   }
 
   const handleTransferHost = () => {
-    if (!confirm(`Transfer host to ${participant.username}?`)) return
+    if (!window.confirm(`Transfer host to ${participant.username}?`)) return
     emitTransferHost(socket, {
       roomId: room.roomId,
       targetParticipantId: participant.participantId,

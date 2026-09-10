@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { SocketProvider } from './context/SocketContext'
 import { RoomProvider } from './context/RoomContext'
+import ErrorBoundary from './components/common/ErrorBoundary'
 import LandingPage from './pages/LandingPage'
 import RoomsPage from './pages/RoomsPage'
 import RoomPage from './pages/RoomPage'
@@ -16,11 +17,13 @@ export default function App() {
     <BrowserRouter>
       <SocketProvider>
         <RoomProvider>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/rooms" element={<RoomsPage />} />
-            <Route path="/room/:roomId" element={<RoomPage />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/rooms" element={<RoomsPage />} />
+              <Route path="/room/:roomId" element={<RoomPage />} />
+            </Routes>
+          </ErrorBoundary>
 
           {/* Global toast container — positioned top-right */}
           <Toaster

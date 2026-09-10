@@ -58,7 +58,7 @@ export default function RoomPage() {
     applyParticipantsSync, setVideoState, addParticipant,
     removeParticipant, updateParticipantRole,
     setChatMessages, addChatMessage, resetRoom, videoState, participants,
-    setQueue,
+    queue, setQueue,
   } = useRoomContext()
 
   const { socket } = useSocketContext()
@@ -88,9 +88,10 @@ export default function RoomPage() {
         const data = await getRoom(roomId)
         const { room: fetchedRoom } = data
         if (!room) setRoom(fetchedRoom)
-      } catch {
-        toast.error('Room not found or has expired.')
-        navigate('/')
+      } catch (err) {
+        console.error('Failed to validate room:', err)
+        toast.error('Unable to load this room.')
+        setJoinStatus('error')
       }
     }
 
@@ -496,33 +497,33 @@ export default function RoomPage() {
         <div className="relative z-10 flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-3 border-[#ffb3ad] border-t-transparent rounded-full animate-spin" />
           <p className="font-[Geist,sans-serif] text-[15px] font-medium text-[#e4beba]">
-            Connecting to watch party...
+            Loading room...
           </p>
         </div>
       </div>
     )
   }
 
-  // 3. Error state
+  // 5. Error state
   if (joinStatus === 'error') {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-[#131315] text-[#e5e1e4] p-4">
         <div className="max-w-md w-full bg-[#1d1d20] border border-[#5b403e]/30 rounded-2xl p-6 text-center shadow-xl">
-          <h3 className="text-lg font-semibold text-[#ff5451] mb-2">Failed to join room</h3>
-          <p className="text-sm text-[#c9c5c8] mb-6">Could not connect to the watch party. Please try again or return home.</p>
+          <h3 className="text-lg font-semibold text-[#ff5451] mb-2">Unable to load this room</h3>
+          <p className="text-sm text-[#c9c5c8] mb-6">Could not connect to the watch party. Please check the room code or try again.</p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => {
                 setJoinStatus('joining')
                 executeJoinRef.current?.(false)
               }}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff5451] to-[#ffb3ad] text-[#131315] font-semibold text-sm cursor-pointer"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff5451] to-[#ffb3ad] text-[#131315] font-semibold text-sm cursor-pointer hover:opacity-95 transition-opacity"
             >
-              Retry
+              Try Again
             </button>
             <button
               onClick={() => navigate('/')}
-              className="px-5 py-2.5 rounded-xl bg-[#131315] border border-[#5b403e]/40 text-[#e5e1e4] text-sm cursor-pointer hover:bg-[#1d1d20]"
+              className="px-5 py-2.5 rounded-xl bg-[#131315] border border-[#5b403e]/40 text-[#e5e1e4] text-sm cursor-pointer hover:bg-[#1d1d20] transition-colors"
             >
               Back to Home
             </button>
@@ -551,12 +552,12 @@ export default function RoomPage() {
               <div className="w-full flex justify-between items-start px-1">
                 <div className="min-w-0">
                   <h2 className="font-[Geist,sans-serif] font-semibold text-[17px] sm:text-[20px] tracking-[-0.02em] text-[#e5e1e4] mb-1 truncate">
-                    {room?.currentVideo?.title || 'Watch Party'}
+                    {videoState?.title || room?.currentVideo?.title || 'Watch Party'}
                   </h2>
                   <div className="flex items-center gap-3 text-[#e4beba] font-[Geist,sans-serif] text-[12px] sm:text-[13px]">
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-                      {participants.length} Watching
+                      {participants?.length || 0} Watching
                     </span>
                     <span>•</span>
                     <span className="text-[#ff5451]">Synced</span>
