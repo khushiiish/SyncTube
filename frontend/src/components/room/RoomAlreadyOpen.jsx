@@ -19,6 +19,7 @@ import { ArrowRightLeft, Home, Layers } from 'lucide-react'
 export default function RoomAlreadyOpen({
   roomId,
   roomName,
+  deviceInfo,
   isSwitching,
   onSwitch,
   onHome,
@@ -31,7 +32,7 @@ export default function RoomAlreadyOpen({
       </div>
 
       {/* Main glass card */}
-      <div className="relative z-10 w-full max-w-md bg-[#1d1d20]/80 backdrop-blur-xl border border-[#5b403e]/30 rounded-2xl p-8 flex flex-col items-center text-center shadow-2xl">
+      <div className="relative z-10 w-full max-w-md bg-[#1d1d20]/80 backdrop-blur-xl border border-[#5b403e]/30 rounded-2xl p-5 sm:p-8 flex flex-col items-center text-center shadow-2xl">
         {/* Brand header */}
         <div className="flex items-center gap-2 mb-6">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ffb3ad]/20 to-[#ff5451]/20 border border-[#ffb3ad]/30 flex items-center justify-center text-[#ffb3ad]">
@@ -52,11 +53,15 @@ export default function RoomAlreadyOpen({
         )}
 
         {/* Title & Description */}
-        <h2 className="font-[Geist,sans-serif] text-[22px] sm:text-[24px] font-semibold text-[#e5e1e4] tracking-tight mb-2">
-          Room already open elsewhere
+        <h2 className="font-[Geist,sans-serif] text-[21px] sm:text-[23px] font-semibold text-[#e5e1e4] tracking-tight mb-2">
+          This account is already active on another device
         </h2>
         <p className="font-[Geist,sans-serif] text-[14px] text-[#c9c5c8] leading-relaxed mb-8 max-w-xs">
-          You&apos;re currently watching this room in another tab or window. Would you like to switch playback to this tab?
+          {deviceInfo ? (
+            <>You&apos;re currently active in this room on <span className="text-[#ffb3ad] font-semibold">{deviceInfo}</span>. Would you like to switch playback here?</>
+          ) : (
+            <>You&apos;re currently active in this room on another device or tab. Would you like to switch playback here?</>
+          )}
         </p>
 
         {/* Actions */}

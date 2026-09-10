@@ -50,9 +50,9 @@ export const EVENTS = {
  * @param {boolean} [payload.takeover=false]
  * @param {Function} [callback] - Structured ack callback ({ success, participantId, role, isPrimaryConnection, code, message })
  */
-export function emitJoinRoom(socket, { roomId, username, guestDeviceId, clerkToken, tabId, takeover = false }, callback) {
+export function emitJoinRoom(socket, { roomId, username, guestDeviceId, clerkToken, tabId, sessionId, deviceInfo, takeover = false }, callback) {
   if (!socket) return
-  socket.emit(EVENTS.JOIN_ROOM, { roomId, username, guestDeviceId, clerkToken, tabId, takeover }, callback)
+  socket.emit(EVENTS.JOIN_ROOM, { roomId, username, guestDeviceId, clerkToken, tabId, sessionId, deviceInfo, takeover }, callback)
 }
 
 export function emitLeaveRoom(socket, { roomId }) {

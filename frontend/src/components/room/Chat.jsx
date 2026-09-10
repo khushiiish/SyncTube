@@ -144,7 +144,7 @@ export default function Chat() {
       </div>
 
       {/* Input area */}
-      <div className="p-4 border-t border-[#27272A]">
+      <div className="p-3 sm:p-4 border-t border-[#27272A] bg-[#1a191d] shrink-0">
         {/* Inline Email Invite Form */}
         <AnimatePresence>
           {showEmailInvite && (
@@ -162,7 +162,7 @@ export default function Chat() {
           <button
             type="button"
             onClick={() => setShowEmailInvite(!showEmailInvite)}
-            className="flex items-center gap-1.5 text-[12px] font-[Geist,sans-serif] font-medium text-[#e4beba]/80 hover:text-[#ffb3ad] transition-colors group"
+            className="flex items-center gap-1.5 text-[12px] font-[Geist,sans-serif] font-medium text-[#e4beba]/80 hover:text-[#ffb3ad] transition-colors group cursor-pointer"
           >
             <Mail className="w-3.5 h-3.5 text-[#ffb3ad] group-hover:scale-110 transition-transform" />
             <span>{showEmailInvite ? 'Hide email invite' : 'Invite by email'}</span>
@@ -177,7 +177,7 @@ export default function Chat() {
             isSending={isSendingVoice}
           />
         ) : (
-          <div className="flex items-center gap-2 bg-[#0e0e10] border border-[#27272A] rounded-xl px-3 py-2 focus-within:border-[#ffb3ad]/40 transition-colors">
+          <div className="flex items-center gap-2 bg-[#0e0e10] border border-[#27272A] rounded-xl px-3 py-2 min-h-[44px] focus-within:border-[#ffb3ad]/40 transition-colors">
             <input
               id="chat-input"
               type="text"
@@ -186,7 +186,7 @@ export default function Chat() {
               onKeyDown={handleKeyDown}
               placeholder="Send a message..."
               maxLength={500}
-              className="flex-1 bg-transparent text-[#e5e1e4] font-[Inter,sans-serif] text-[14px] focus:outline-none placeholder:text-[#e4beba]/40"
+              className="flex-1 bg-transparent text-[#e5e1e4] font-[Inter,sans-serif] text-[13px] sm:text-[14px] focus:outline-none placeholder:text-[#e4beba]/40 min-w-0"
             />
 
             {/* Mic button to start voice message */}
@@ -195,7 +195,7 @@ export default function Chat() {
               id="start-voice-btn"
               onClick={() => setIsRecordingVoice(true)}
               title="Record voice note"
-              className="p-1 text-[#e4beba]/60 hover:text-[#ffb3ad] hover:bg-[#ffb3ad]/10 rounded-lg transition-colors"
+              className="p-1.5 text-[#e4beba]/70 hover:text-[#ffb3ad] hover:bg-[#ffb3ad]/10 rounded-lg transition-colors cursor-pointer shrink-0"
             >
               <Mic className="w-4 h-4" />
             </button>
@@ -205,7 +205,7 @@ export default function Chat() {
               id="send-chat-btn"
               onClick={sendMessage}
               disabled={!input.trim()}
-              className="text-[#ffb3ad] hover:text-[#e5e1e4] disabled:text-[#e4beba]/20 transition-colors disabled:cursor-not-allowed p-1"
+              className="text-[#ffb3ad] hover:text-[#e5e1e4] disabled:text-[#e4beba]/20 transition-colors disabled:cursor-not-allowed p-1.5 cursor-pointer shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>

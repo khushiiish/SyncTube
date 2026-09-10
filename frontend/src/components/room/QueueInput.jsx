@@ -69,16 +69,16 @@ export default function QueueInput() {
   const nextVideo = queue && queue[0]
 
   return (
-    <div className="w-full bg-[#1b1a20]/60 backdrop-blur-md border border-[#5b403e]/20 rounded-xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center shadow-lg relative overflow-hidden group">
+    <div className="w-full bg-[#1b1a20]/60 backdrop-blur-md border border-[#5b403e]/20 rounded-xl p-3 sm:p-4 flex flex-col md:flex-row gap-3 sm:gap-4 justify-between items-center shadow-lg relative overflow-hidden group">
       {/* Decorative gradient corner */}
       <div className="absolute top-0 right-0 w-24 h-24 bg-[#ff5451]/5 rounded-full blur-xl pointer-events-none" />
 
       {/* Left side: Status indicators */}
-      <div className="flex flex-col gap-1 items-start w-full md:w-auto">
+      <div className="flex flex-col gap-1 items-start w-full md:w-auto min-w-0">
         <div className="flex items-center gap-2">
           {videoState.videoId ? (
             <>
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2 w-2 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
               </span>
@@ -88,20 +88,21 @@ export default function QueueInput() {
             </>
           ) : (
             <>
-              <span className="w-2 h-2 rounded-full bg-gray-500" />
+              <span className="w-2 h-2 rounded-full bg-gray-500 shrink-0" />
               <span className="font-[Geist,sans-serif] font-bold text-[12px] uppercase tracking-wider text-[#e4beba]/60">
                 Idle
               </span>
             </>
           )}
         </div>
-        <p className="font-[Inter,sans-serif] text-[14px] font-medium text-[#e5e1e4] max-w-sm truncate">
+        <p className="font-[Inter,sans-serif] text-[13px] sm:text-[14px] font-medium text-[#e5e1e4] max-w-full md:max-w-sm truncate">
           {videoState.title || 'No video loaded'}
         </p>
         {nextVideo && (
-          <p className="font-[Inter,sans-serif] text-[12px] text-[#e4beba]/60 flex items-center gap-1.5 mt-0.5">
-            <Sparkles className="w-3.5 h-3.5 text-[#ff5451]" />
-            Next up: <span className="text-[#e5e1e4] font-medium max-w-[200px] truncate">{nextVideo.title}</span>
+          <p className="font-[Inter,sans-serif] text-[12px] text-[#e4beba]/60 flex items-center gap-1.5 mt-0.5 max-w-full truncate">
+            <Sparkles className="w-3.5 h-3.5 text-[#ff5451] shrink-0" />
+            <span className="shrink-0">Next up:</span>
+            <span className="text-[#e5e1e4] font-medium truncate">{nextVideo.title}</span>
           </p>
         )}
       </div>
@@ -117,18 +118,19 @@ export default function QueueInput() {
               onKeyDown={(e) => e.key === 'Enter' && handleAddToQueue()}
               placeholder="Paste YouTube link to queue..."
               disabled={isLoading}
-              className="bg-transparent border-none text-[#e5e1e4] font-[Inter,sans-serif] text-[13px] focus:outline-none px-3 py-1.5 flex-1 placeholder:text-[#e4beba]/30 disabled:opacity-50"
+              className="bg-transparent border-none text-[#e5e1e4] font-[Inter,sans-serif] text-[13px] focus:outline-none px-2.5 sm:px-3 py-1.5 flex-1 min-w-0 placeholder:text-[#e4beba]/30 disabled:opacity-50"
             />
             <button
               onClick={handleAddToQueue}
               disabled={isLoading || !url.trim()}
-              className="bg-[#ff5451] hover:bg-[#ffb3ad] hover:text-[#68000a] text-white disabled:opacity-50 disabled:hover:bg-[#ff5451] disabled:hover:text-white rounded-md p-1.5 transition-all duration-200"
+              className="bg-[#ff5451] hover:bg-[#ffb3ad] hover:text-[#68000a] text-white disabled:opacity-50 disabled:hover:bg-[#ff5451] disabled:hover:text-white rounded-md p-2 sm:p-1.5 transition-all duration-200 cursor-pointer shrink-0"
+              title="Add to queue"
             >
               <Plus className="w-4 h-4" />
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2 bg-[#0d0d0f]/40 border border-[#5b403e]/10 rounded-lg px-4 py-2 text-[#e4beba]/60">
+          <div className="flex items-center justify-center md:justify-start gap-2 bg-[#0d0d0f]/40 border border-[#5b403e]/10 rounded-lg px-4 py-2 text-[#e4beba]/60 w-full md:w-auto">
             <ListVideo className="w-4 h-4 text-[#ff5451]" />
             <span className="font-[Inter,sans-serif] text-[13px]">
               Queue Count: <strong className="text-[#e5e1e4]">{queue?.length || 0}</strong>

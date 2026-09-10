@@ -102,59 +102,67 @@ export default function VideoControls({ playerRef, isPlayerReady, isSyncedUpdate
   }
 
   return (
-    <div className="absolute bottom-0 left-0 w-full px-4 pb-4 pt-16 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end pointer-events-auto">
-      {/* Progress Bar */}
+    <div className="absolute bottom-0 left-0 w-full px-3 sm:px-4 pb-2.5 sm:pb-4 pt-12 sm:pt-16 bg-gradient-to-t from-black/85 via-black/45 to-transparent flex flex-col justify-end pointer-events-auto">
+      {/* Progress Bar with generous touch target */}
       <div
-        ref={progressRef}
-        id="progress-bar"
-        className={`w-full h-1.5 bg-[#353437]/50 rounded-full mb-4 relative overflow-hidden group/bar ${canControl ? 'cursor-pointer' : 'cursor-default'}`}
+        className="w-full py-2 -my-1.5 cursor-pointer"
         onClick={handleProgressClick}
       >
-        {/* Fill */}
         <div
-          className="absolute top-0 left-0 h-full bg-[#ffb3ad] rounded-full transition-none"
-          style={{ width: `${progress}%` }}
+          ref={progressRef}
+          id="progress-bar"
+          className={`w-full h-2 sm:h-1.5 bg-[#353437]/60 rounded-full relative overflow-hidden group/bar ${canControl ? 'cursor-pointer' : 'cursor-default'}`}
         >
-          {/* Scrubber dot */}
-          {canControl && (
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover/bar:opacity-100 transition-opacity -mr-1.5" />
-          )}
+          {/* Fill */}
+          <div
+            className="absolute top-0 left-0 h-full bg-[#ffb3ad] rounded-full transition-none"
+            style={{ width: `${progress}%` }}
+          >
+            {/* Scrubber dot */}
+            {canControl && (
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-3 sm:h-3 bg-white rounded-full shadow opacity-100 md:opacity-0 md:group-hover/bar:opacity-100 transition-opacity -mr-1.5" />
+            )}
+          </div>
+          {/* Buffer indicator */}
+          <div className="absolute top-0 left-0 h-full bg-white/10 rounded-full" style={{ width: `${Math.min(progress + 15, 100)}%` }} />
         </div>
-        {/* Buffer indicator */}
-        <div className="absolute top-0 left-0 h-full bg-white/10 rounded-full" style={{ width: `${Math.min(progress + 15, 100)}%` }} />
       </div>
 
       {/* Controls Row */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 mt-1 sm:mt-2">
         {/* Left controls */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           {/* Play/Pause */}
           <button
             id="play-pause-btn"
             onClick={handlePlayPause}
             disabled={!canControl}
-            className={`text-[#e5e1e4] transition-colors ${canControl ? 'hover:text-[#ffb3ad] cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+            className={`p-1 text-[#e5e1e4] transition-colors flex items-center justify-center shrink-0 ${canControl ? 'hover:text-[#ffb3ad] cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
             title={canControl ? (videoState.isPlaying ? 'Pause' : 'Play') : 'Only host/moderator can control'}
           >
             {videoState.isPlaying
-              ? <Pause className="w-7 h-7 fill-current" />
-              : <Play className="w-7 h-7 fill-current" />
+              ? <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
+              : <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
             }
           </button>
 
           {/* Volume */}
           <div
-            className="flex items-center gap-2 group/vol relative"
+            className="flex items-center gap-1.5 sm:gap-2 group/vol relative shrink-0"
             onMouseEnter={() => setShowVolume(true)}
             onMouseLeave={() => setShowVolume(false)}
           >
-            <button onClick={toggleMute} className="text-[#e5e1e4] hover:text-[#ffb3ad] transition-colors">
+            <button
+              onClick={toggleMute}
+              className="p-1 text-[#e5e1e4] hover:text-[#ffb3ad] transition-colors cursor-pointer"
+              title={isMuted ? 'Unmute' : 'Mute'}
+            >
               {isMuted || volume === 0
-                ? <VolumeX className="w-5 h-5" />
-                : <Volume2 className="w-5 h-5" />
+                ? <VolumeX className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                : <Volume2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               }
             </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-out flex items-center ${showVolume ? 'w-20' : 'w-0'}`}>
+            <div className={`hidden sm:flex overflow-hidden transition-all duration-300 ease-out items-center ${showVolume ? 'w-20' : 'w-0'}`}>
               <input
                 type="range"
                 min="0"
@@ -167,19 +175,19 @@ export default function VideoControls({ playerRef, isPlayerReady, isSyncedUpdate
           </div>
 
           {/* Time */}
-          <span className="font-[Geist,sans-serif] text-[12px] text-[#e4beba] ml-1">
+          <span className="font-[Geist,sans-serif] text-[11px] sm:text-[12px] text-[#e4beba] whitespace-nowrap truncate">
             {formatDuration(currentTime)} / {formatDuration(duration)}
           </span>
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           <button
             onClick={handleFullscreen}
-            className="text-[#e5e1e4] hover:text-[#ffb3ad] transition-colors"
+            className="p-1.5 text-[#e5e1e4] hover:text-[#ffb3ad] transition-colors cursor-pointer"
             title="Fullscreen"
           >
-            <Maximize className="w-5 h-5" />
+            <Maximize className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>

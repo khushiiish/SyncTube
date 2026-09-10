@@ -108,7 +108,7 @@ export default function VoiceMessageBubble({ message, isMe }) {
   return (
     <div
       className={`
-        px-3.5 py-2.5 rounded-2xl border transition-all flex flex-col gap-1.5 min-w-[210px] sm:min-w-[240px]
+        px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-2xl border transition-all flex flex-col gap-1.5 min-w-[190px] sm:min-w-[230px] max-w-full
         ${isMe
           ? 'bg-[#ffb3ad]/15 border-[#ffb3ad]/25 text-[#e5e1e4] rounded-tr-sm shadow-[0_2px_12px_rgba(255,179,173,0.05)]'
           : 'bg-[#1b1a1d] border-[#27272A] text-[#e5e1e4] rounded-tl-sm shadow-[0_2px_12px_rgba(0,0,0,0.2)]'

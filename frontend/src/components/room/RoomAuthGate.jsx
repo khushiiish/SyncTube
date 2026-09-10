@@ -49,7 +49,7 @@ export default function RoomAuthGate({
       </div>
 
       {/* Main glass card */}
-      <div className="relative z-10 w-full max-w-md bg-[#1d1d20]/85 backdrop-blur-xl border border-[#5b403e]/30 rounded-2xl p-8 flex flex-col items-center text-center shadow-2xl">
+      <div className="relative z-10 w-full max-w-md bg-[#1d1d20]/85 backdrop-blur-xl border border-[#5b403e]/30 rounded-2xl p-5 sm:p-8 flex flex-col items-center text-center shadow-2xl">
         {/* Brand header */}
         <div className="flex items-center gap-2 mb-6">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ffb3ad]/20 to-[#ff5451]/20 border border-[#ffb3ad]/30 flex items-center justify-center text-[#ff5451]">

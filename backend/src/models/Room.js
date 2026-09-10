@@ -16,11 +16,13 @@ const mongoose = require('mongoose')
 const participantSchema = new mongoose.Schema({
   participantId:   { type: String, required: true },
   identityHash:    { type: String, required: true },
+  clerkUserId:     { type: String, default: null, index: true },
   username:        { type: String, required: true, trim: true },
   role:            { type: String, enum: ['host', 'moderator', 'participant', 'viewer'], default: 'participant' },
   socketIds:       [{ type: String }],
   primarySocketId: { type: String, default: null },
   activeTabId:     { type: String, default: null },
+  activeSessionId: { type: String, default: null },
   joinedAt:        { type: Date, default: Date.now },
   status:          { type: String, enum: ['online', 'reconnecting', 'offline', 'buffering'], default: 'online' },
   // Backward-compatibility bridge for any old Phase 2 documents

@@ -1,6 +1,7 @@
 const Room = require('../models/Room')
 const RoomBlock = require('../models/RoomBlock')
 const roomBlockService = require('./roomBlockService')
+const roomSessionService = require('./roomSessionService')
 const { generateRoomId } = require('../utils/generateRoomId')
 const { nanoid } = require('nanoid')
 const crypto = require('crypto')
@@ -143,18 +144,21 @@ async function joinOrAttachParticipant(roomId, {
   identityHash,
   clerkUserId,
   tabId = null,
+  sessionId = null,
+  deviceInfo = null,
   takeover = false,
   activeSockets = [],
 }) {
   const room = await Room.findOne({ roomId: roomId.toUpperCase() })
   if (!room) throw new Error('Room not found.')
 
+  const roomExpiresAt = new Date(room.createdAt.getTime() + roomBlockService.ROOM_TTL_MS)
+
   // 1. Authoritative RoomBlock check (scoped by roomId + identityHash)
   let blocked = await roomBlockService.isBlocked(room.roomId, identityHash)
 
   // Legacy fallback: check embedded blockedParticipants in existing rooms
   if (!blocked && room.isIdentityBlocked(identityHash)) {
-    const roomExpiresAt = new Date(room.createdAt.getTime() + roomBlockService.ROOM_TTL_MS)
     await roomBlockService.blockIdentity({
       roomId: room.roomId,
       identityHash,
@@ -175,38 +179,62 @@ async function joinOrAttachParticipant(roomId, {
     }
   }
 
-  // 2. Check if participant with this identity already exists
+  // 2. Server-Authoritative Multi-Device Room Session Check
+  const effectiveUserId = clerkUserId || identityHash
+  let sessionResult = null
+  let replacedSocketId = null
+
+  if (takeover) {
+    sessionResult = await roomSessionService.switchSession({
+      roomId: room.roomId,
+      userId: effectiveUserId,
+      identityHash,
+      newSessionId: sessionId || crypto.randomUUID(),
+      newSocketId: socketId,
+      newTabId: tabId,
+      newDeviceInfo: deviceInfo,
+      expiresAt: roomExpiresAt,
+    })
+    replacedSocketId = sessionResult.replacedSocketId
+  } else {
+    sessionResult = await roomSessionService.registerOrVerifySession({
+      roomId: room.roomId,
+      userId: effectiveUserId,
+      identityHash,
+      sessionId: sessionId || tabId || socketId,
+      socketId,
+      tabId,
+      deviceInfo,
+      expiresAt: roomExpiresAt,
+      activeSockets,
+    })
+
+    if (sessionResult.isDuplicate) {
+      return {
+        room,
+        participant: null,
+        isNewParticipant: false,
+        isPrimary: false,
+        blocked: false,
+        activeElsewhere: true,
+        takeover: false,
+        activeSession: sessionResult.activeSession,
+      }
+    }
+  }
+
+  // 3. Attach or create participant in Room document
   let participant = room.findParticipantByIdentityHash(identityHash)
 
   if (participant) {
-    // Check if participant currently has an active connection on ANOTHER tab
-    const hasLiveSockets = Array.isArray(participant.socketIds) &&
-      participant.socketIds.some(sid => activeSockets.includes(sid))
-
-    const isDifferentTab = Boolean(
-      tabId &&
-      participant.activeTabId &&
-      participant.activeTabId !== tabId &&
-      hasLiveSockets
-    )
-
-    if (isDifferentTab) {
-      if (!takeover) {
-        // Room is open elsewhere; do not attach socket or modify participant
-        return {
-          room,
-          participant,
-          isNewParticipant: false,
-          isPrimary: false,
-          blocked: false,
-          activeElsewhere: true,
-          takeover: false,
-        }
+    if (takeover) {
+      const previousSocketIds = [...(participant.socketIds || [])]
+      if (replacedSocketId && !previousSocketIds.includes(replacedSocketId)) {
+        previousSocketIds.push(replacedSocketId)
       }
 
-      // Authoritative takeover requested by user clicking "Switch here"
-      const previousSocketIds = [...(participant.socketIds || [])]
-
+      participant.clerkUserId = effectiveUserId
+      participant.activeSessionId = sessionResult.newSession.sessionId
       participant.activeTabId = tabId
       participant.socketIds = [socketId]
       participant.primarySocketId = socketId
@@ -231,7 +259,11 @@ async function joinOrAttachParticipant(roomId, {
       }
     }
 
-    // Normal reconnect / recovery (same tab or previous tab closed)
+    // Normal reconnect / recovery (same device/tab)
+    participant.clerkUserId = effectiveUserId
+    if (sessionResult.session?.sessionId || sessionId) {
+      participant.activeSessionId = sessionResult.session?.sessionId || sessionId
+    }
     if (tabId) {
       participant.activeTabId = tabId
     }
@@ -262,7 +294,7 @@ async function joinOrAttachParticipant(roomId, {
     }
   }
 
-  // 3. New participant entering the room
+  // 4. New participant entering the room
   let assignedRole = 'participant'
 
   if (room.createdByClerkUserId) {
@@ -281,6 +313,8 @@ async function joinOrAttachParticipant(roomId, {
   const newParticipant = {
     participantId,
     identityHash,
+    clerkUserId: effectiveUserId,
+    activeSessionId: (sessionResult.newSession || sessionResult.session)?.sessionId || sessionId,
     username: username.trim().slice(0, 24),
     role: assignedRole,
     socketIds: [socketId],
@@ -402,10 +436,16 @@ async function finalizeParticipantLeave(roomId, participantId) {
       newHost = room.participants[0]
     }
 
+    // Terminate session in roomSessionService
+    if (leavingParticipant.clerkUserId) {
+      await roomSessionService.terminateSession(room.roomId, leavingParticipant.clerkUserId)
+    }
+
     // Delete empty rooms
     if (room.participants.length === 0) {
       await voiceCleanupService.cleanupRoomAssets(room.roomId)
       await roomBlockService.removeRoomBlocks(room.roomId)
+      await roomSessionService.cleanupRoomSessions(room.roomId)
       await Room.deleteOne({ roomId: room.roomId })
       return { room: null, leavingParticipant, newHost: null }
     }
@@ -728,6 +768,7 @@ async function deleteRoom(roomId) {
   const normId = roomId.toUpperCase()
   await voiceCleanupService.cleanupRoomAssets(normId)
   await roomBlockService.removeRoomBlocks(normId)
+  await roomSessionService.cleanupRoomSessions(normId)
   return await Room.deleteOne({ roomId: normId })
 }
 

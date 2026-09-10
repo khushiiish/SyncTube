@@ -6,15 +6,18 @@ import RoomHeader from '../components/room/RoomHeader'
 import VideoPlayer from '../components/room/VideoPlayer'
 import QueueInput from '../components/room/QueueInput'
 import Sidebar from '../components/room/Sidebar'
+import MobileRoomNav from '../components/room/MobileRoomNav'
+import MobileRoomDrawer from '../components/room/MobileRoomDrawer'
 import ConnectionBanner from '../components/room/ConnectionBanner'
 import RoomAlreadyOpen from '../components/room/RoomAlreadyOpen'
 import RoomAuthGate from '../components/room/RoomAuthGate'
 import { useRoomContext } from '../context/RoomContext'
 import { useSocketContext } from '../context/SocketContext'
-import { EVENTS, emitJoinRoom, emitSyncRequest } from '../services/socketService'
+import { EVENTS, emitJoinRoom, emitSyncRequest, emitLeaveRoom } from '../services/socketService'
 import { getRoom } from '../services/api'
 import { getGuestDeviceId } from '../utils/clientIdentity'
 import { getTabId } from '../utils/tabIdentity'
+import { getSessionId, getDeviceInfo } from '../utils/deviceIdentity'
 import { getRoomSession, setRoomSession, clearRoomSession } from '../utils/roomSession'
 import { useRoomTabSync } from '../hooks/useRoomTabSync'
 
@@ -42,6 +45,13 @@ export default function RoomPage() {
   // Explicit join gate status:
   // 'checking' | 'joining' | 'active_elsewhere' | 'switching' | 'joined' | 'error'
   const [joinStatus, setJoinStatus] = useState('checking')
+  const [conflictDeviceInfo, setConflictDeviceInfo] = useState(null)
+
+  // Mobile responsive tab & drawer state: null | 'participants' | 'chat' | 'queue'
+  const [mobileTab, setMobileTab] = useState(null)
+  const [hasUnreadChat, setHasUnreadChat] = useState(false)
+  const mobileTabRef = useRef(null)
+  mobileTabRef.current = mobileTab
 
   const {
     room, currentUser, setRoom, setCurrentUser, setPrimaryConnection,
@@ -192,10 +202,10 @@ export default function RoomPage() {
       navigate('/')
     }
 
-    const handleRoomTakenOver = () => {
-      // Switched to another tab: reset local React room state and navigate Home.
-      // Crucial: DO NOT call clearRoomSession(roomId) here because the active tab still needs it!
-      toast('Room switched to another tab.', { icon: '🔄' })
+    const handleRoomTakenOver = (data) => {
+      // Switched to another device or tab: reset local React room state and navigate Home.
+      const msg = data?.message || 'Room switched to another device.'
+      toast(msg, { icon: '🔄' })
       resetRoom()
       navigate('/')
     }
@@ -223,6 +233,9 @@ export default function RoomPage() {
 
     const handleChatMessage = (message) => {
       addChatMessage(message)
+      if (mobileTabRef.current !== 'chat') {
+        setHasUnreadChat(true)
+      }
     }
 
     const handleError = ({ message }) => {
@@ -238,6 +251,8 @@ export default function RoomPage() {
     socket.on(EVENTS.PRIMARY_CONNECTION_CHANGED, handlePrimaryChanged)
     socket.on(EVENTS.KICKED, handleKicked)
     socket.on(EVENTS.ROOM_TAKEN_OVER, handleRoomTakenOver)
+    socket.on('session-replaced', handleRoomTakenOver)
+    socket.on('session_replaced', handleRoomTakenOver)
     socket.on(EVENTS.QUEUE_SYNC, handleQueueSync)
     socket.on(EVENTS.PLAY, handlePlay)
     socket.on(EVENTS.PAUSE, handlePause)
@@ -257,6 +272,8 @@ export default function RoomPage() {
         }
         const guestDeviceId = getGuestDeviceId()
         const tabId = getTabId()
+        const sessionId = getSessionId()
+        const deviceInfo = getDeviceInfo()
 
         emitJoinRoom(socket, {
           roomId,
@@ -264,6 +281,8 @@ export default function RoomPage() {
           guestDeviceId,
           clerkToken,
           tabId,
+          sessionId,
+          deviceInfo,
           takeover,
         }, (res) => {
           if (!res) return
@@ -299,11 +318,12 @@ export default function RoomPage() {
             } else if (res.code === 'ROOM_ACTIVE_ELSEWHERE') {
               if (joinedSuccessfullyInThisTabRef.current) {
                 // This tab was previously joined, but room was switched elsewhere (e.g. reconnected after takeover)
-                toast('Room switched to another tab.', { icon: '🔄' })
+                toast(res.message || 'Room switched to another device.', { icon: '🔄' })
                 resetRoom()
                 navigate('/')
               } else {
-                // New duplicate tab opened while another tab is active
+                // New duplicate device or tab opened while another device/tab is active
+                setConflictDeviceInfo(res.deviceInfo || null)
                 setJoinStatus('active_elsewhere')
               }
             } else if (res.code === 'BANNED_FROM_ROOM') {
@@ -348,6 +368,8 @@ export default function RoomPage() {
       socket.off(EVENTS.PRIMARY_CONNECTION_CHANGED, handlePrimaryChanged)
       socket.off(EVENTS.KICKED, handleKicked)
       socket.off(EVENTS.ROOM_TAKEN_OVER, handleRoomTakenOver)
+      socket.off('session-replaced', handleRoomTakenOver)
+      socket.off('session_replaced', handleRoomTakenOver)
       socket.off(EVENTS.QUEUE_SYNC, handleQueueSync)
       socket.off(EVENTS.PLAY, handlePlay)
       socket.off(EVENTS.PAUSE, handlePause)
@@ -380,6 +402,29 @@ export default function RoomPage() {
     if (executeJoinRef.current) {
       executeJoinRef.current(true)
     }
+  }
+
+  // Handle mobile bottom navigation tab selection
+  const handleSelectMobileTab = (tabId) => {
+    if (tabId === 'player') {
+      setMobileTab(null)
+    } else {
+      setMobileTab(tabId)
+      if (tabId === 'chat') {
+        setHasUnreadChat(false)
+      }
+    }
+  }
+
+  // Handle leaving room (used by mobile nav and mobile drawer)
+  const handleLeaveRoom = () => {
+    if (room?.roomId && socket) {
+      emitLeaveRoom(socket, { roomId: room.roomId })
+    }
+    clearRoomSession(roomId)
+    resetRoom()
+    navigate('/')
+    toast('Left the room.', { icon: '👋' })
   }
 
   // 0. Clerk Loading Gate
@@ -433,6 +478,7 @@ export default function RoomPage() {
       <RoomAlreadyOpen
         roomId={roomId}
         roomName={room?.roomName}
+        deviceInfo={conflictDeviceInfo}
         isSwitching={joinStatus === 'switching'}
         onSwitch={handleSwitchHere}
         onHome={() => navigate('/')}
@@ -491,23 +537,23 @@ export default function RoomPage() {
     <div className="h-screen w-full overflow-hidden flex flex-col bg-[#131315] text-[#e5e1e4]">
       <RoomHeader />
 
-      <main className="flex-1 flex pt-[72px] h-full overflow-hidden">
-        <section className="flex-1 relative flex flex-col items-center p-4 lg:p-6 bg-[#0e0e10] overflow-y-auto scrollbar-thin">
+      <main className="flex-1 flex pt-[56px] sm:pt-[72px] h-full overflow-hidden">
+        <section className="flex-1 relative flex flex-col items-center p-3 sm:p-4 lg:p-6 pb-20 md:pb-6 bg-[#0e0e10] overflow-y-auto scrollbar-thin">
           <div className="absolute inset-0 z-0 flex items-center justify-center opacity-20 pointer-events-none">
             <div className="w-3/4 h-3/4 bg-[#ffb3ad]/10 rounded-full blur-[160px]" />
           </div>
 
-          <div className="relative z-10 w-full flex flex-col items-center gap-6 max-w-5xl mx-auto my-auto py-4">
+          <div className="relative z-10 w-full flex flex-col items-center gap-4 sm:gap-6 max-w-5xl mx-auto my-auto py-2 sm:py-4">
             <QueueInput />
             <VideoPlayer />
 
             {videoState?.videoId && (
-              <div className="w-full flex justify-between items-start">
-                <div>
-                  <h2 className="font-[Geist,sans-serif] font-semibold text-[20px] tracking-[-0.02em] text-[#e5e1e4] mb-1">
+              <div className="w-full flex justify-between items-start px-1">
+                <div className="min-w-0">
+                  <h2 className="font-[Geist,sans-serif] font-semibold text-[17px] sm:text-[20px] tracking-[-0.02em] text-[#e5e1e4] mb-1 truncate">
                     {room?.currentVideo?.title || 'Watch Party'}
                   </h2>
-                  <div className="flex items-center gap-3 text-[#e4beba] font-[Geist,sans-serif] text-[13px]">
+                  <div className="flex items-center gap-3 text-[#e4beba] font-[Geist,sans-serif] text-[12px] sm:text-[13px]">
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
                       {participants.length} Watching
@@ -521,8 +567,31 @@ export default function RoomPage() {
           </div>
         </section>
 
+        {/* Desktop Sidebar (hidden on mobile, visible on md: and above) */}
         <Sidebar />
       </main>
+
+      {/* Mobile Drawer (slides up on mobile when active tab is selected) */}
+      <MobileRoomDrawer
+        isOpen={Boolean(mobileTab)}
+        activeTab={mobileTab || 'chat'}
+        onSelectTab={(tab) => {
+          setMobileTab(tab)
+          if (tab === 'chat') setHasUnreadChat(false)
+        }}
+        onClose={() => setMobileTab(null)}
+        onLeave={handleLeaveRoom}
+      />
+
+      {/* Mobile Bottom Navigation Bar (fixed at bottom on mobile) */}
+      <MobileRoomNav
+        activeTab={mobileTab}
+        onSelectTab={handleSelectMobileTab}
+        unreadChat={hasUnreadChat}
+        queueCount={queue?.length || 0}
+        participantCount={participants?.length || 0}
+        onLeave={handleLeaveRoom}
+      />
 
       <ConnectionBanner />
     </div>

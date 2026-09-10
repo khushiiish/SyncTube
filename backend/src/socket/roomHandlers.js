@@ -1,6 +1,7 @@
 const mongoose = require('mongoose')
 const { nanoid } = require('nanoid')
 const roomService = require('../services/roomService')
+const roomSessionService = require('../services/roomSessionService')
 const emailService = require('../services/emailService')
 const { validateEmail } = require('../utils/validateEmail')
 const { checkAndRecordInvite, rollbackInvite } = require('../services/inviteRateLimiter')
@@ -113,7 +114,7 @@ function registerRoomHandlers(socket, io) {
    */
   socket.on(EVENTS.JOIN_ROOM, async (payload, callback) => {
     const ack = typeof callback === 'function' ? callback : () => {}
-    const { roomId, username, clerkToken: payloadToken, tabId, takeover } = payload || {}
+    const { roomId, username, clerkToken: payloadToken, tabId, sessionId, deviceInfo: payloadDeviceInfo, takeover } = payload || {}
     const effectiveToken = payloadToken || socket.handshake?.auth?.token || socket.handshake?.headers?.authorization?.replace(/^Bearer\s+/i, '')
 
     try {
@@ -134,6 +135,10 @@ function registerRoomHandlers(socket, io) {
       }
 
       const safeTabId = (tabId && typeof tabId === 'string') ? tabId.trim().slice(0, 64) : null
+      const safeSessionId = (sessionId && typeof sessionId === 'string') ? sessionId.trim().slice(0, 64) : safeTabId
+      const userAgent = socket.handshake?.headers?.['user-agent']
+      const detectedDevice = roomSessionService.parseFriendlyDeviceInfo(userAgent)
+      const deviceInfo = payloadDeviceInfo || detectedDevice
 
       // Serialize join mutations for this room
       return await withRoomLock(roomId, async () => {
@@ -152,13 +157,15 @@ function registerRoomHandlers(socket, io) {
         // Active sockets currently connected to the server
         const activeSockets = Array.from(io.sockets.sockets.keys())
 
-        // 2. Attach or create participant in room
+        // 2. Attach or create participant in room with server-authoritative session
         const result = await roomService.joinOrAttachParticipant(roomId, {
           socketId: socket.id,
           username: username.trim(),
           identityHash: identity.identityHash,
           clerkUserId: identity.clerkUserId,
           tabId: safeTabId,
+          sessionId: safeSessionId,
+          deviceInfo,
           takeover: Boolean(takeover),
           activeSockets,
         })
@@ -175,7 +182,8 @@ function registerRoomHandlers(socket, io) {
           return ack({
             success: false,
             code: 'ROOM_ACTIVE_ELSEWHERE',
-            message: 'This room is already open in another tab.',
+            message: 'This account is already active in this room on another device.',
+            deviceInfo: result.activeSession?.deviceInfo || 'another device',
           })
         }
 
@@ -226,10 +234,14 @@ function registerRoomHandlers(socket, io) {
         if (isTakeover && Array.isArray(previousSocketIds)) {
           for (const oldSid of previousSocketIds) {
             if (oldSid !== socket.id) {
-              io.to(oldSid).emit(EVENTS.ROOM_TAKEN_OVER, {
+              const takeoverPayload = {
                 roomId: room.roomId,
-                reason: 'switched_to_another_tab',
-              })
+                reason: 'account_switched_to_another_device',
+                message: 'This account was opened in this room on another device.',
+              }
+              io.to(oldSid).emit(EVENTS.ROOM_TAKEN_OVER, takeoverPayload)
+              io.to(oldSid).emit('session-replaced', takeoverPayload)
+              io.to(oldSid).emit('session_replaced', takeoverPayload)
               const oldSock = io.sockets.sockets.get(oldSid)
               if (oldSock) {
                 oldSock.leave(room.roomId)

@@ -1,4 +1,6 @@
 const roomService = require('../services/roomService')
+const roomSessionService = require('../services/roomSessionService')
+const crypto = require('crypto')
 
 /**
  * POST /api/rooms/create
@@ -195,4 +197,49 @@ async function deleteRoom(req, res, next) {
   }
 }
 
-module.exports = { createRoom, joinRoom, getRoom, getRooms, deleteRoom }
+/**
+ * POST /api/rooms/:id/switch-session
+ * Switches active room session to the requesting device.
+ */
+async function switchRoomSession(req, res, next) {
+  try {
+    const roomId = req.params.id
+    const auth = req.auth || {}
+    const clerkUserId = auth.userId || auth.sub
+
+    if (!clerkUserId) {
+      return res.status(401).json({
+        message: 'Authentication required. Please sign in with your Google account.',
+        code: 'AUTHENTICATION_REQUIRED',
+      })
+    }
+
+    const room = await roomService.findRoom(roomId.trim())
+    const { sessionId, tabId, deviceInfo } = req.body || {}
+    const safeDeviceInfo = deviceInfo || roomSessionService.parseFriendlyDeviceInfo(req.headers['user-agent'])
+
+    const switchResult = await roomSessionService.switchSession({
+      roomId: room.roomId,
+      userId: clerkUserId,
+      identityHash: clerkUserId,
+      newSessionId: sessionId || crypto.randomUUID(),
+      newSocketId: null,
+      newTabId: tabId || null,
+      newDeviceInfo: safeDeviceInfo,
+      expiresAt: new Date(Date.now() + roomSessionService.ROOM_TTL_MS),
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: 'Session switched successfully.',
+      session: switchResult.newSession,
+    })
+  } catch (err) {
+    if (err.message && err.message.includes('not found')) {
+      return res.status(404).json({ message: err.message })
+    }
+    next(err)
+  }
+}
+
+module.exports = { createRoom, joinRoom, getRoom, getRooms, deleteRoom, switchRoomSession }

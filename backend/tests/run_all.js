@@ -9,6 +9,7 @@ const { runPhase4Tests } = require('./phase4_voice.test')
 const { runPhase5Tests } = require('./phase5_hardening.test')
 const { runPhase6Tests } = require('./phase6_duplicate_tab_and_blocking.test')
 const { runPhase7Tests } = require('./phase7_admin_state_and_host_invariant.test')
+const { runPhase8Tests } = require('./phase8_multi_device_session.test')
 
 async function runAll() {
   console.log('=================================================================')
@@ -25,6 +26,7 @@ async function runAll() {
     await runPhase5Tests()
     await runPhase6Tests()
     await runPhase7Tests()
+    await runPhase8Tests()
   } catch (err) {
     failed = true
     console.error('\n❌ Test execution failed with error:', err)

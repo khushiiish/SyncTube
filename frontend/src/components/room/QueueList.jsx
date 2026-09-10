@@ -136,52 +136,54 @@ export default function QueueList() {
                   </p>
                 </div>
 
-                {/* Action Buttons Overlay on Hover */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-[#1b1a20]/95 absolute right-2 py-1 px-1.5 rounded-md border border-[#5b403e]/20 shadow-md">
-                  {/* Play Now (Host/Mod) */}
-                  {canControl && (
-                    <button
-                      onClick={() => handlePlayNow(item)}
-                      title="Play Now"
-                      className="p-1 hover:text-[#ffb3ad] text-[#e4beba]/75 hover:bg-[#ffb3ad]/10 rounded transition-colors"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                {/* Action Buttons: Visible on mobile, hover overlay on desktop */}
+                {(canControl || canDelete) && (
+                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-[#1b1a20]/95 shrink-0 static md:absolute md:right-2 py-1 px-1.5 rounded-md border border-[#5b403e]/20 shadow-md">
+                    {/* Play Now (Host/Mod) */}
+                    {canControl && (
+                      <button
+                        onClick={() => handlePlayNow(item)}
+                        title="Play Now"
+                        className="p-1.5 hover:text-[#ffb3ad] text-[#e4beba]/80 hover:bg-[#ffb3ad]/10 rounded transition-colors cursor-pointer"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
-                  {/* Move Up (Host only) */}
-                  {isHost && index > 0 && (
-                    <button
-                      onClick={() => handleMove(index, -1)}
-                      title="Move Up"
-                      className="p-1 hover:text-[#ffb3ad] text-[#e4beba]/75 hover:bg-[#ffb3ad]/10 rounded transition-colors"
-                    >
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                    {/* Move Up (Host only) */}
+                    {isHost && index > 0 && (
+                      <button
+                        onClick={() => handleMove(index, -1)}
+                        title="Move Up"
+                        className="p-1.5 hover:text-[#ffb3ad] text-[#e4beba]/80 hover:bg-[#ffb3ad]/10 rounded transition-colors cursor-pointer"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
-                  {/* Move Down (Host only) */}
-                  {isHost && index < queue.length - 1 && (
-                    <button
-                      onClick={() => handleMove(index, 1)}
-                      title="Move Down"
-                      className="p-1 hover:text-[#ffb3ad] text-[#e4beba]/75 hover:bg-[#ffb3ad]/10 rounded transition-colors"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                    {/* Move Down (Host only) */}
+                    {isHost && index < queue.length - 1 && (
+                      <button
+                        onClick={() => handleMove(index, 1)}
+                        title="Move Down"
+                        className="p-1.5 hover:text-[#ffb3ad] text-[#e4beba]/80 hover:bg-[#ffb3ad]/10 rounded transition-colors cursor-pointer"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
-                  {/* Remove */}
-                  {canDelete && (
-                    <button
-                      onClick={() => handleRemove(item)}
-                      title="Remove"
-                      className="p-1 hover:text-[#ff5451] text-[#e4beba]/75 hover:bg-[#ff5451]/10 rounded transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+                    {/* Remove */}
+                    {canDelete && (
+                      <button
+                        onClick={() => handleRemove(item)}
+                        title="Remove"
+                        className="p-1.5 hover:text-[#ff5451] text-[#e4beba]/80 hover:bg-[#ff5451]/10 rounded transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )
           })}
