@@ -123,6 +123,30 @@ async function registerOrVerifySession({
         return { success: true, session: newSession, isNewSession: true }
       } catch (err) {
         if (err.code === 11000) {
+          if (err.message && err.message.includes('sessionId_1')) {
+            console.warn('[RoomSession] Caught stale unique sessionId_1 index error. Auto-repairing...')
+            await RoomSession.repairIndexes().catch(() => {})
+            try {
+              const retrySession = await RoomSession.create({
+                roomId: normRoomId,
+                userId,
+                identityHash,
+                sessionId,
+                socketId,
+                tabId,
+                deviceInfo: safeDeviceInfo,
+                status: 'active',
+                expiresAt: sessionExpiry,
+              })
+              return { success: true, session: retrySession, isNewSession: true }
+            } catch (retryErr) {
+              if (retryErr.code === 11000) {
+                const concurrent = await getActiveSession(normRoomId, userId)
+                return { success: false, isDuplicate: true, activeSession: concurrent }
+              }
+              throw retryErr
+            }
+          }
           const concurrent = await getActiveSession(normRoomId, userId)
           return { success: false, isDuplicate: true, activeSession: concurrent }
         }
@@ -168,6 +192,30 @@ async function registerOrVerifySession({
   } catch (err) {
     // Handle concurrent join race condition (caught by compound unique index)
     if (err.code === 11000) {
+      if (err.message && err.message.includes('sessionId_1')) {
+        console.warn('[RoomSession] Caught stale unique sessionId_1 index error. Auto-repairing...')
+        await RoomSession.repairIndexes().catch(() => {})
+        try {
+          const retrySession = await RoomSession.create({
+            roomId: normRoomId,
+            userId,
+            identityHash,
+            sessionId,
+            socketId,
+            tabId,
+            deviceInfo: safeDeviceInfo,
+            status: 'active',
+            expiresAt: sessionExpiry,
+          })
+          return { success: true, session: retrySession, isNewSession: true }
+        } catch (retryErr) {
+          if (retryErr.code === 11000) {
+            const concurrent = await getActiveSession(normRoomId, userId)
+            return { success: false, isDuplicate: true, activeSession: concurrent }
+          }
+          throw retryErr
+        }
+      }
       const concurrent = await getActiveSession(normRoomId, userId)
       return { success: false, isDuplicate: true, activeSession: concurrent }
     }
@@ -215,17 +263,38 @@ async function switchSession({
   )
 
   // 2. Create the new active session
-  const newSession = await RoomSession.create({
-    roomId: normRoomId,
-    userId,
-    identityHash,
-    sessionId: newSessionId,
-    socketId: newSocketId,
-    tabId: newTabId,
-    deviceInfo: safeDeviceInfo,
-    status: 'active',
-    expiresAt: sessionExpiry,
-  })
+  let newSession
+  try {
+    newSession = await RoomSession.create({
+      roomId: normRoomId,
+      userId,
+      identityHash,
+      sessionId: newSessionId,
+      socketId: newSocketId,
+      tabId: newTabId,
+      deviceInfo: safeDeviceInfo,
+      status: 'active',
+      expiresAt: sessionExpiry,
+    })
+  } catch (err) {
+    if (err.code === 11000 && err.message && err.message.includes('sessionId_1')) {
+      console.warn('[RoomSession] Caught stale unique sessionId_1 index error in switchSession. Auto-repairing...')
+      await RoomSession.repairIndexes().catch(() => {})
+      newSession = await RoomSession.create({
+        roomId: normRoomId,
+        userId,
+        identityHash,
+        sessionId: newSessionId,
+        socketId: newSocketId,
+        tabId: newTabId,
+        deviceInfo: safeDeviceInfo,
+        status: 'active',
+        expiresAt: sessionExpiry,
+      })
+    } else {
+      throw err
+    }
+  }
 
   return {
     success: true,

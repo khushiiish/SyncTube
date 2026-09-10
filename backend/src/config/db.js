@@ -61,6 +61,8 @@ async function connectDB() {
       })
       console.log(`[DB] MongoDB Atlas connected successfully: ${mongoose.connection.host}`)
       isConnecting = false
+      const RoomSession = require('../models/RoomSession')
+      RoomSession.repairIndexes().catch(() => {})
       return
     } catch (err) {
       isConnecting = false

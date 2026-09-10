@@ -81,4 +81,30 @@ roomSessionSchema.index(
 roomSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
 const RoomSession = mongoose.model('RoomSession', roomSessionSchema)
+
+/**
+ * Automatically repairs legacy or erroneous indexes on startup.
+ * Specifically drops any unique constraint on sessionId_1 to allow
+ * the same browser session ID to be reused across rooms or after session termination.
+ */
+RoomSession.repairIndexes = async function() {
+  try {
+    if (!mongoose.connection || mongoose.connection.readyState !== 1) return
+    const collection = mongoose.connection.collection('roomsessions')
+    const indexes = await collection.indexes()
+    const legacySessionIdx = indexes.find(idx => idx.name === 'sessionId_1' && idx.unique)
+    if (legacySessionIdx) {
+      console.log('[RoomSession] Dropping erroneous unique index on sessionId_1...')
+      await collection.dropIndex('sessionId_1')
+      await collection.createIndex({ sessionId: 1 })
+      console.log('[RoomSession] Successfully replaced with non-unique sessionId index.')
+    }
+  } catch (err) {
+    // Ignore NamespaceNotFound (code 26) when collection hasn't been created yet
+    if (err.code !== 26 && !err.message?.includes('ns not found')) {
+      console.warn('[RoomSession] Index repair notice:', err.message)
+    }
+  }
+}
+
 module.exports = RoomSession
